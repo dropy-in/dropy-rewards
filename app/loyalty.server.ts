@@ -10,6 +10,8 @@ export async function getConfig() {
     pendingDays: parseInt(c.pending_days ?? "7", 10),
     signupPoints: parseInt(c.signup_points ?? "10", 10),
     pointValuePaise: parseInt(c.point_value_paise ?? "30", 10),
+    placeOrderEnabled: (c.place_order_enabled ?? "1") === "1",
+    signupEnabled: (c.signup_enabled ?? "1") === "1",
   };
 }
 
@@ -33,6 +35,7 @@ export async function logWebhook(topic: string, webhookId: string | null, ref: s
 
 export async function earnFromOrder(order: any): Promise<string> {
   const cfg = await getConfig();
+  if (!cfg.placeOrderEnabled) return "place-order-disabled";
   const cust = order?.customer;
   if (!cust?.id) return "no-customer";
   await upsertCustomer(cust);
@@ -106,7 +109,7 @@ export async function signupPoints(customer: any): Promise<string> {
   const cfg = await getConfig();
   if (!customer?.id) return "no-id";
   await upsertCustomer(customer);
-  if (cfg.signupPoints <= 0) return "signup-disabled";
+  if (!cfg.signupEnabled || cfg.signupPoints <= 0) return "signup-disabled";
   const { error } = await supabase.from("loyalty_ledger").insert({
     customer_id: String(customer.id),
     type: "earn_signup",
@@ -167,4 +170,42 @@ export async function recentWebhooks(n = 8) {
     .order("id", { ascending: false })
     .limit(n);
   return data ?? [];
+}
+
+// ---------- Phase 2.5: redemption programs + toggles ----------
+
+export async function setConfigKey(key: string, value: string) {
+  const allowed = ["place_order_enabled", "signup_enabled"];
+  if (!allowed.includes(key)) throw new Error("key not allowed");
+  const { error } = await supabase.from("loyalty_config").upsert({ key, value: value === "1" ? "1" : "0" });
+  if (error) throw error;
+}
+
+export async function listPrograms() {
+  const { data } = await supabase.from("loyalty_programs").select("*").order("id", { ascending: false });
+  return data ?? [];
+}
+
+export async function createProgram(p: {
+  type: string;
+  name: string;
+  discount_kind?: string | null;
+  discount_value?: number | null;
+  points_required: number;
+  min_order_amount?: number | null;
+  product_id?: string | null;
+  product_title?: string | null;
+}) {
+  const { error } = await supabase.from("loyalty_programs").insert(p);
+  if (error) throw error;
+}
+
+export async function setProgramActive(id: number, active: boolean) {
+  const { error } = await supabase.from("loyalty_programs").update({ active }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteProgram(id: number) {
+  const { error } = await supabase.from("loyalty_programs").delete().eq("id", id);
+  if (error) throw error;
 }
