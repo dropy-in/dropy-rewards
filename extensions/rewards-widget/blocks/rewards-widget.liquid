@@ -1,0 +1,42 @@
+<div
+  id="dropy-rewards-root"
+  data-logged-in="{% if customer %}1{% else %}0{% endif %}"
+  data-customer-name="{{ customer.first_name | escape }}"
+  data-theme-color="{{ block.settings.theme_color }}"
+  data-door-text="{{ block.settings.door_text | escape }}"
+  data-door-style="{{ block.settings.door_style }}"
+  data-welcome="{{ block.settings.welcome_text | escape }}"
+  data-position="{{ block.settings.position }}"
+  data-account-url="{{ routes.account_url }}"
+></div>
+{{ 'rewards-widget.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'rewards-widget.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Dropy Rewards Widget",
+  "target": "body",
+  "settings": [
+    { "type": "color", "id": "theme_color", "label": "Theme color", "default": "#FB923C" },
+    { "type": "text", "id": "welcome_text", "label": "Welcome text", "default": "Welcome back" },
+    { "type": "text", "id": "door_text", "label": "Door text", "default": "Rewards" },
+    {
+      "type": "select", "id": "door_style", "label": "Door style",
+      "options": [
+        { "value": "icon", "label": "Icon" },
+        { "value": "text", "label": "Text" },
+        { "value": "icon_text", "label": "Icon and text" }
+      ],
+      "default": "icon_text"
+    },
+    {
+      "type": "select", "id": "position", "label": "Position",
+      "options": [
+        { "value": "right", "label": "Bottom right" },
+        { "value": "left", "label": "Bottom left" }
+      ],
+      "default": "right"
+    }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,24 @@
+.dr-door{position:fixed;bottom:20px;z-index:9999;display:flex;align-items:center;gap:8px;border:none;color:#fff;font-weight:600;font-family:inherit;padding:12px 18px;border-radius:999px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px}
+.dr-door svg{width:20px;height:20px;fill:#fff}
+.dr-right{right:20px}
+.dr-left{left:20px}
+.dr-panel{position:fixed;bottom:84px;width:340px;max-width:calc(100vw - 24px);max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.3);z-index:9999;display:none;flex-direction:column;overflow:hidden;font-family:inherit}
+.dr-panel.dr-open{display:flex}
+.dr-head{color:#fff;padding:16px;position:relative}
+.dr-welcome{font-size:12px;opacity:.9}
+.dr-name{font-size:20px;font-weight:700;min-height:24px}
+.dr-x{position:absolute;top:8px;right:12px;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1}
+.dr-body{padding:12px;overflow-y:auto}
+.dr-card{background:#fff;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:10px;font-size:14px;color:#1a1a1a}
+.dr-points{display:flex;justify-content:space-between;align-items:center}
+.dr-big{font-size:30px;font-weight:800;line-height:1}
+.dr-sub{font-size:12px;color:#777}
+.dr-pend{font-size:13px;font-weight:600}
+.dr-title{font-weight:700;margin-bottom:6px}
+.dr-list{margin:0;padding-left:18px}
+.dr-list li{margin:4px 0}
+.dr-btn{display:inline-block;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;text-decoration:none;font-size:13px;margin-top:8px}
+.dr-prog{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid #f2f2f2}
+.dr-prog:first-of-type{border-top:none}
+.dr-redeem[disabled]{cursor:not-allowed}
+@media(max-width:480px){.dr-panel{bottom:76px;right:12px;left:12px;width:auto}}
