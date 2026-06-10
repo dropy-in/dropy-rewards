@@ -1,57 +1,81 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
-import { supabase } from "../supabase.server";
+import { getMetrics, getConfig, recentWebhooks } from "../loyalty.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  const [ledger, log, balances] = await Promise.all([
-    supabase.from("loyalty_ledger").select("*").order("id", { ascending: false }).limit(20),
-    supabase.from("loyalty_webhook_log").select("*").order("id", { ascending: false }).limit(10),
-    supabase.from("loyalty_balances").select("*").limit(10),
-  ]);
-  return {
-    ledger: ledger.data ?? [],
-    log: log.data ?? [],
-    balances: balances.data ?? [],
-  };
+  const [metrics, config, hooks] = await Promise.all([getMetrics(), getConfig(), recentWebhooks()]);
+  return { metrics, config, hooks };
 };
 
-const cell: React.CSSProperties = { padding: "6px 10px", borderBottom: "1px solid #e3e3e3", fontSize: 13, textAlign: "left" };
+const fmt = (n: number) => Number(n ?? 0).toLocaleString("en-IN");
+const dt = (s: string | null) =>
+  s ? new Date(s).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
-function Table({ title, rows, cols }: { title: string; rows: any[]; cols: string[] }) {
+function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,.08)" }}>
-      <h2 style={{ margin: "0 0 10px", fontSize: 15 }}>{title}</h2>
-      {rows.length === 0 ? (
-        <p style={{ color: "#777", fontSize: 13 }}>No rows yet.</p>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr>{cols.map((c) => <th key={c} style={{ ...cell, fontWeight: 600 }}>{c}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>{cols.map((c) => <td key={c} style={cell}>{String(r[c] ?? "")}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
+      <s-stack direction="block" gap="base">
+        <s-text>{label}</s-text>
+        <s-heading>{String(value)}</s-heading>
+      </s-stack>
+    </s-box>
   );
 }
 
-export default function Index() {
-  const { ledger, log, balances } = useLoaderData<typeof loader>();
+export default function Dashboard() {
+  const { metrics, config, hooks } = useLoaderData<typeof loader>();
+  const disbursed = metrics.points_order + metrics.points_signup;
+  const valueIssued = (disbursed * config.pointValuePaise) / 100;
+
   return (
-    <div style={{ padding: 20, background: "#f6f6f7", minHeight: "100vh", fontFamily: "Inter, system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Dropy Rewards — Engine Monitor</h1>
-      <p style={{ color: "#777", margin: "0 0 20px", fontSize: 13 }}>Phase 1 · earning engine · live ledger</p>
-      <Table title="Balances" rows={balances} cols={["customer_id", "available", "pending", "lifetime_earned"]} />
-      <Table title="Ledger (latest 20)" rows={ledger} cols={["id", "customer_id", "type", "points", "order_name", "available_at", "note", "created_at"]} />
-      <Table title="Webhook log (latest 10)" rows={log} cols={["id", "topic", "ref", "ok", "message", "created_at"]} />
-    </div>
+    <s-page heading="Dashboard">
+      <s-section heading="Overview">
+        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(170px, 1fr))" gap="base">
+          <Metric label="Loyalty customers" value={fmt(metrics.customers)} />
+          <Metric label="Points available" value={fmt(metrics.points_available)} />
+          <Metric label="Points pending" value={fmt(metrics.points_pending)} />
+          <Metric label="Points redeemed" value={fmt(metrics.points_redeemed)} />
+        </s-grid>
+      </s-section>
+
+      <s-section heading="Points disbursed">
+        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(170px, 1fr))" gap="base">
+          <Metric label="Place Order" value={fmt(metrics.points_order)} />
+          <Metric label="Sign Up" value={fmt(metrics.points_signup)} />
+          <Metric label="Liability (₹ value issued)" value={`₹${fmt(valueIssued)}`} />
+        </s-grid>
+      </s-section>
+
+      <s-section heading="Recent activity">
+        {hooks.length === 0 ? (
+          <s-paragraph>No webhook activity yet.</s-paragraph>
+        ) : (
+          <s-table>
+            <s-table-header-row>
+              <s-table-header>Topic</s-table-header>
+              <s-table-header>Ref</s-table-header>
+              <s-table-header>Status</s-table-header>
+              <s-table-header>Message</s-table-header>
+              <s-table-header>Time</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {hooks.map((h: any) => (
+                <s-table-row key={h.id}>
+                  <s-table-cell>{h.topic}</s-table-cell>
+                  <s-table-cell>{h.ref}</s-table-cell>
+                  <s-table-cell>
+                    <s-badge tone={h.ok ? "success" : "critical"}>{h.ok ? "ok" : "error"}</s-badge>
+                  </s-table-cell>
+                  <s-table-cell>{h.message}</s-table-cell>
+                  <s-table-cell>{dt(h.created_at)}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        )}
+      </s-section>
+    </s-page>
   );
 }

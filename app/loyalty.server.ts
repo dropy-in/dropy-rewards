@@ -118,3 +118,53 @@ export async function signupPoints(customer: any): Promise<string> {
   }
   return `signup +${cfg.signupPoints}`;
 }
+
+// ---------- Phase 2: admin queries ----------
+
+export async function getMetrics() {
+  const { data, error } = await supabase.from("loyalty_metrics").select("*").single();
+  if (error) throw error;
+  return data as {
+    customers: number; points_order: number; points_signup: number;
+    points_redeemed: number; points_pending: number; points_available: number;
+  };
+}
+
+export async function updateConfig(entries: Record<string, string>) {
+  const allowed = ["earn_amount_rupees", "earn_points", "pending_days", "signup_points", "point_value_paise"];
+  const rows = Object.entries(entries)
+    .filter(([k]) => allowed.includes(k))
+    .map(([key, value]) => ({ key, value: String(Math.max(0, parseInt(String(value || "0"), 10) || 0)) }));
+  const { error } = await supabase.from("loyalty_config").upsert(rows);
+  if (error) throw error;
+}
+
+export async function listCustomers() {
+  const [{ data: customers }, { data: balances }] = await Promise.all([
+    supabase.from("loyalty_customers").select("*").order("created_at", { ascending: false }).limit(200),
+    supabase.from("loyalty_balances").select("*"),
+  ]);
+  const bal = new Map((balances ?? []).map((b: any) => [b.customer_id, b]));
+  return (customers ?? []).map((c: any) => ({
+    ...c,
+    ...(bal.get(c.shopify_customer_id) ?? { available: 0, pending: 0, lifetime_earned: 0 }),
+  }));
+}
+
+export async function listTransactions() {
+  const { data } = await supabase
+    .from("loyalty_ledger")
+    .select("*")
+    .order("id", { ascending: false })
+    .limit(100);
+  return data ?? [];
+}
+
+export async function recentWebhooks(n = 8) {
+  const { data } = await supabase
+    .from("loyalty_webhook_log")
+    .select("*")
+    .order("id", { ascending: false })
+    .limit(n);
+  return data ?? [];
+}
