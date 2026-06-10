@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { supabase } from "../supabase.server";
-import { getConfig, listPrograms, listCoupons } from "../loyalty.server";
+import { getConfig, listPrograms, listCoupons, tierStatus } from "../loyalty.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request); // verifies Shopify signature
@@ -10,6 +10,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const [cfg, allPrograms] = await Promise.all([getConfig(), listPrograms()]);
   const coupons = cid ? await listCoupons(cid) : [];
+  const tier = cid ? await tierStatus(cid) : null;
   const programs = allPrograms.filter((p: any) => p.active);
 
   let balance = { available: 0, pending: 0, lifetime_earned: 0 };
@@ -25,6 +26,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return Response.json({
     loggedIn: Boolean(cid),
     coupons,
+    tier,
     balance,
     config: {
       earnAmount: cfg.earnAmount,

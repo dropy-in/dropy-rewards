@@ -3,11 +3,11 @@ import { authenticate } from "../shopify.server";
 import { earnFromOrder, logWebhook } from "../loyalty.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { payload, topic, webhookId } = await authenticate.webhook(request);
+  const { payload, topic, webhookId, admin } = await authenticate.webhook(request);
   let ok = true;
   let msg = "";
   try {
-    msg = await earnFromOrder(payload);
+    msg = await earnFromOrder(payload, admin);
   } catch (e) {
     ok = false;
     msg = String(e);

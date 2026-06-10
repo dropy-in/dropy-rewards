@@ -12,6 +12,9 @@ export async function getConfig() {
     pointValuePaise: parseInt(c.point_value_paise ?? "30", 10),
     placeOrderEnabled: (c.place_order_enabled ?? "1") === "1",
     signupEnabled: (c.signup_enabled ?? "1") === "1",
+    vipEnabled: (c.vip_enabled ?? "0") === "1",
+    tierBufferDays: parseInt(c.tier_buffer_days ?? "7", 10),
+    tierWindowDays: parseInt(c.tier_window_days ?? "0", 10),
   };
 }
 
@@ -33,14 +36,26 @@ export async function logWebhook(topic: string, webhookId: string | null, ref: s
   await supabase.from("loyalty_webhook_log").insert({ topic, webhook_id: webhookId, ref, ok, message });
 }
 
-export async function earnFromOrder(order: any): Promise<string> {
+export async function earnFromOrder(order: any, admin?: any): Promise<string> {
   const cfg = await getConfig();
   if (!cfg.placeOrderEnabled) return "place-order-disabled";
   const cust = order?.customer;
   if (!cust?.id) return "no-customer";
   await upsertCustomer(cust);
   // subtotal_price = post-discount, pre-shipping → COD fee (shipping rate) auto-excluded
-  const pts = calcPoints(paise(order.subtotal_price), cfg);
+  const orderPaise = paise(order.subtotal_price);
+  let pts = calcPoints(orderPaise, cfg);
+  let tierNote: string | null = null;
+  if (cfg.vipEnabled && pts > 0) {
+    const tier = await getCustomerTier(String(cust.id));
+    if (tier) {
+      if (Number(tier.multiplier) > 1) {
+        pts = Math.floor(pts * Number(tier.multiplier));
+        tierNote = `${tier.name} ${tier.multiplier}x`;
+      }
+      await awardTierRewards(admin, String(cust.id), tier);
+    }
+  }
   if (pts <= 0) return "zero-points";
   const availableAt = new Date(Date.now() + cfg.pendingDays * 86_400_000).toISOString();
   const { error } = await supabase.from("loyalty_ledger").insert({
@@ -50,6 +65,8 @@ export async function earnFromOrder(order: any): Promise<string> {
     order_id: String(order.id),
     order_name: order.name ?? null,
     available_at: availableAt,
+    amount_paise: orderPaise,
+    note: tierNote,
   });
   if (error) {
     if (error.code === "23505") return "duplicate-order"; // unique index hit
@@ -84,6 +101,7 @@ export async function clawbackFromRefund(refund: any): Promise<string> {
     points: 0,
     order_id: orderId,
     ref_id: refId,
+    amount_paise: -refundPaise,
   });
   if (insErr) {
     if (insErr.code === "23505") return "duplicate-refund";
@@ -175,7 +193,7 @@ export async function recentWebhooks(n = 8) {
 // ---------- Phase 2.5: redemption programs + toggles ----------
 
 export async function setConfigKey(key: string, value: string) {
-  const allowed = ["place_order_enabled", "signup_enabled"];
+  const allowed = ["place_order_enabled", "signup_enabled", "vip_enabled"];
   if (!allowed.includes(key)) throw new Error("key not allowed");
   const { error } = await supabase.from("loyalty_config").upsert({ key, value: value === "1" ? "1" : "0" });
   if (error) throw error;
@@ -215,15 +233,15 @@ export async function deleteProgram(id: number) {
 const genCode = () =>
   "DRPY-" + Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
 
-async function createShopifyReward(admin: any, program: any, customerId: string) {
+async function createShopifyReward(admin: any, program: any, customerId: string, opts: { permanent?: boolean } = {}) {
   const customerGid = `gid://shopify/Customer/${customerId}`;
   const code = genCode();
   const base = {
     title: `Rewards: ${program.name} (${code})`,
     code,
     startsAt: new Date().toISOString(),
-    usageLimit: 1,
-    appliesOncePerCustomer: true,
+    usageLimit: opts.permanent ? null : 1,
+    appliesOncePerCustomer: !opts.permanent,
     customerSelection: { customers: { add: [customerGid] } },
   };
 
@@ -245,7 +263,7 @@ async function createShopifyReward(admin: any, program: any, customerId: string)
     if (j.errors) throw new Error("GraphQL: " + JSON.stringify(j.errors));
     const errs = j.data?.storeCreditAccountCredit?.userErrors;
     if (errs?.length) throw new Error(errs.map((e: any) => e.message).join(", "));
-    return { code: null, detail: `₹${amount} store credit added` };
+    return { code: null, detail: `₹${amount} store credit added`, discountId: null as string | null };
   }
 
   if (program.type === "free_shipping") {
@@ -262,7 +280,7 @@ async function createShopifyReward(admin: any, program: any, customerId: string)
     const j = await res.json();
     const errs = j.data?.discountCodeFreeShippingCreate?.userErrors;
     if (errs?.length) throw new Error(errs.map((e: any) => e.message).join(", "));
-    return { code, detail: "Free shipping code" };
+    return { code, detail: "Free shipping code", discountId: j.data?.discountCodeFreeShippingCreate?.codeDiscountNode?.id ?? null };
   }
 
   // discount + free_gift → basic code discount
@@ -298,7 +316,7 @@ async function createShopifyReward(admin: any, program: any, customerId: string)
   const j = await res.json();
   const errs = j.data?.discountCodeBasicCreate?.userErrors;
   if (errs?.length) throw new Error(errs.map((e: any) => e.message).join(", "));
-  return { code, detail: isGift ? `Free: ${program.product_title}` : "Discount code" };
+  return { code, detail: isGift ? `Free: ${program.product_title}` : "Discount code", discountId: j.data?.discountCodeBasicCreate?.codeDiscountNode?.id ?? null };
 }
 
 export async function redeemProgram(admin: any, customerId: string, programId: number) {
@@ -341,6 +359,8 @@ export async function redeemProgram(admin: any, customerId: string, programId: n
     points_spent: program.points_required,
     value_paise: program.discount_value ? Math.round(Number(program.discount_value) * 100) : null,
     shopify_ref: reward.code,
+    shopify_discount_id: (reward as any).discountId ?? null,
+    title: program.name,
   });
 
   return { ok: true, type: program.type, name: program.name, code: reward.code, detail: reward.detail };
@@ -349,15 +369,147 @@ export async function redeemProgram(admin: any, customerId: string, programId: n
 export async function listCoupons(customerId: string) {
   const { data } = await supabase
     .from("loyalty_redemptions")
-    .select("shopify_ref, reward_type, points_spent, created_at, loyalty_programs(name)")
+    .select("shopify_ref, reward_type, points_spent, created_at, title, loyalty_programs(name)")
     .eq("customer_id", customerId)
     .order("id", { ascending: false })
     .limit(5);
   return (data ?? []).map((r: any) => ({
     code: r.shopify_ref,
     type: r.reward_type,
-    name: r.loyalty_programs?.name ?? r.reward_type,
+    name: r.title ?? r.loyalty_programs?.name ?? r.reward_type,
     points: r.points_spent,
     date: r.created_at,
   }));
+}
+
+// ---------- Phase 5: VIP tiers ----------
+
+export async function listTiers() {
+  const { data } = await supabase.from("loyalty_tiers").select("*").order("entry_amount", { ascending: true });
+  return data ?? [];
+}
+
+export async function createTier(t: any) {
+  const { error } = await supabase.from("loyalty_tiers").insert(t);
+  if (error) throw error;
+}
+
+export async function deleteTier(id: number) {
+  const { error } = await supabase.from("loyalty_tiers").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function setTierBuffer(days: number) {
+  const { error } = await supabase.from("loyalty_config").upsert({ key: "tier_buffer_days", value: String(Math.max(0, Math.round(days))) });
+  if (error) throw error;
+}
+
+export async function getSpend(customerId: string) {
+  const { data } = await supabase.from("loyalty_spend").select("*").eq("customer_id", customerId).maybeSingle();
+  return { total: (data?.total_paise ?? 0) / 100, buffered: (data?.buffered_paise ?? 0) / 100 };
+}
+
+export async function getCustomerTier(customerId: string) {
+  const [tiers, spend] = await Promise.all([listTiers(), getSpend(customerId)]);
+  let current: any = null;
+  for (const t of tiers) if (spend.buffered >= Number(t.entry_amount)) current = t;
+  return current; // sorted ascending — highest qualifying tier wins
+}
+
+export async function tierStatus(customerId: string) {
+  const cfg = await getConfig();
+  if (!cfg.vipEnabled) return null;
+  const [tiers, spend] = await Promise.all([listTiers(), getSpend(customerId)]);
+  if (!tiers.length) return null;
+  let current: any = null;
+  let next: any = null;
+  for (const t of tiers) {
+    if (spend.buffered >= Number(t.entry_amount)) current = t;
+    else if (!next) next = t;
+  }
+  return {
+    name: current?.name ?? null,
+    multiplier: current ? Number(current.multiplier) : 1,
+    spend: spend.buffered,
+    next: next ? { name: next.name, entry: Number(next.entry_amount), toGo: Math.max(0, Number(next.entry_amount) - spend.buffered) } : null,
+  };
+}
+
+export async function setTierWindow(days: number) {
+  const { error } = await supabase.from("loyalty_config").upsert({ key: "tier_window_days", value: String(Math.max(0, Math.round(days))) });
+  if (error) throw error;
+}
+
+// ---------- tier entry rewards + ongoing privileges ----------
+
+async function awardTierRewards(admin: any, customerId: string, tier: any) {
+  const entryType = tier.entry_reward_type ?? "none";
+  const ongoingType = tier.ongoing_type ?? "none";
+  if (entryType === "none" && ongoingType === "none") return;
+
+  // dedup gate — one award per customer per tier, ever (idx_tier_bonus_once)
+  const { error: gateErr } = await supabase.from("loyalty_ledger").insert({
+    customer_id: customerId,
+    type: "earn_tier",
+    points: entryType === "points" ? Number(tier.entry_bonus_points ?? 0) : 0,
+    ref_id: `tier-${tier.id}`,
+    note: `Welcome to ${tier.name}`,
+  });
+  if (gateErr) return; // already awarded (23505) — exit silently
+  if (!admin) {
+    console.error("[tier-reward] no admin context, code rewards skipped for", customerId, tier.name);
+    return;
+  }
+
+  try {
+    if (["discount", "free_gift", "free_shipping"].includes(entryType)) {
+      const reward = await createShopifyReward(
+        admin,
+        {
+          type: entryType,
+          name: `${tier.name} welcome`,
+          discount_kind: tier.entry_discount_kind,
+          discount_value: tier.entry_discount_value,
+          min_order_amount: 0,
+          product_id: tier.entry_product_id,
+          product_title: tier.entry_product_title,
+        },
+        customerId,
+      );
+      await supabase.from("loyalty_redemptions").insert({
+        customer_id: customerId,
+        reward_type: entryType,
+        points_spent: 0,
+        shopify_ref: reward.code,
+        shopify_discount_id: (reward as any).discountId ?? null,
+        title: `${tier.name} welcome gift`,
+      });
+    }
+    if (["discount", "free_gift", "free_shipping"].includes(ongoingType)) {
+      const reward = await createShopifyReward(
+        admin,
+        {
+          type: ongoingType,
+          name: `${tier.name} privilege`,
+          discount_kind: tier.ongoing_discount_kind,
+          discount_value: tier.ongoing_discount_value,
+          min_order_amount: 0,
+          product_id: tier.ongoing_product_id,
+          product_title: tier.ongoing_product_title,
+        },
+        customerId,
+        { permanent: true },
+      );
+      await supabase.from("loyalty_redemptions").insert({
+        customer_id: customerId,
+        reward_type: ongoingType,
+        points_spent: 0,
+        shopify_ref: reward.code,
+        shopify_discount_id: (reward as any).discountId ?? null,
+        title: `${tier.name} privilege · reusable`,
+      });
+    }
+  } catch (e) {
+    console.error("[tier-reward]", e);
+  }
 }

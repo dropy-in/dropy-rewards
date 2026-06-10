@@ -58,6 +58,19 @@
   door.addEventListener("click", function () { toggle(!open); });
   panel.querySelector(".dr-x").addEventListener("click", function () { toggle(false); });
 
+  function tierHTML(res) {
+    var t = res.tier;
+    if (!t || !t.name) return "";
+    var h = '<div style="margin-top:10px"><span class="dr-pend">👑 ' + esc(t.name) +
+      (t.multiplier > 1 ? " · " + t.multiplier + "× points" : "") + "</span></div>";
+    if (t.next) {
+      var pct = Math.min(100, Math.round((t.spend / t.next.entry) * 100));
+      h += '<div class="dr-prog-row"><span>₹' + Math.ceil(t.next.toGo) + " spend to " + esc(t.next.name) +
+        "</span><span>" + pct + '%</span></div><div class="dr-track"><div class="dr-fill" style="width:' + pct + '%"></div></div>';
+    }
+    return h;
+  }
+
   function nextRewardHTML(res) {
     if (!res.loggedIn || !res.programs.length) return "";
     var avail = res.balance.available;
@@ -86,7 +99,7 @@
         '</div><div class="dr-sub">Points available</div></div>' +
         '<div style="text-align:right"><span class="dr-pend">Pending: ' + res.balance.pending +
         '</span><div class="dr-sub" style="margin-top:5px">1 pt = ₹' + rupee + "</div></div></div>" +
-        nextRewardHTML(res) + "</div>";
+        tierHTML(res) + nextRewardHTML(res) + "</div>";
     } else {
       h +=
         '<div class="dr-card"><b>Sign in to see your points</b><br>' +

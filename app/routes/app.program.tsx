@@ -6,6 +6,11 @@ import { authenticate } from "../shopify.server";
 import {
   getConfig,
   updateConfig,
+  listTiers,
+  createTier,
+  deleteTier,
+  setTierBuffer,
+  setTierWindow,
   setConfigKey,
   listPrograms,
   createProgram,
@@ -15,8 +20,8 @@ import {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  const [config, programs] = await Promise.all([getConfig(), listPrograms()]);
-  return { config, programs };
+  const [config, programs, tiers] = await Promise.all([getConfig(), listPrograms(), listTiers()]);
+  return { config, programs, tiers };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -52,6 +57,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await setProgramActive(Number(form.get("id")), String(form.get("active")) === "1");
   } else if (intent === "delete_program") {
     await deleteProgram(Number(form.get("id")));
+  } else if (intent === "create_tier") {
+    const str = (k: string) => (form.get(k) ? String(form.get(k)) : null);
+    await createTier({
+      name: String(form.get("name") || "Tier"),
+      entry_amount: num("entry_amount"),
+      multiplier: num("multiplier") || 1,
+      entry_bonus_points: Math.round(num("entry_bonus_points")),
+      entry_reward_type: str("entry_reward_type") || "none",
+      entry_discount_kind: str("entry_discount_kind"),
+      entry_discount_value: form.get("entry_discount_value") ? num("entry_discount_value") : null,
+      entry_product_id: str("entry_product_id"),
+      entry_product_title: str("entry_product_title"),
+      ongoing_type: str("ongoing_type") || "none",
+      ongoing_discount_kind: str("ongoing_discount_kind"),
+      ongoing_discount_value: form.get("ongoing_discount_value") ? num("ongoing_discount_value") : null,
+      ongoing_product_id: str("ongoing_product_id"),
+      ongoing_product_title: str("ongoing_product_title"),
+    } as any);
+  } else if (intent === "delete_tier") {
+    await deleteTier(Number(form.get("id")));
+  } else if (intent === "save_tier_buffer") {
+    await setTierBuffer(num("days"));
+  } else if (intent === "save_tier_window") {
+    await setTierWindow(num("days"));
   }
   return { ok: true, intent };
 };
@@ -67,12 +96,20 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function Program() {
-  const { config, programs } = useLoaderData<typeof loader>();
+  const { config, programs, tiers } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
-  const [tab, setTab] = useState<"earning" | "redeeming">("earning");
+  const [tab, setTab] = useState<"earning" | "redeeming" | "vip">("earning");
   const [filter, setFilter] = useState<string>("all");
   const [gift, setGift] = useState<{ id: string; title: string } | null>(null);
+  const [entryGift, setEntryGift] = useState<{ id: string; title: string } | null>(null);
+  const [ongoingGift, setOngoingGift] = useState<{ id: string; title: string } | null>(null);
+
+  const pickFor = async (setter: (v: { id: string; title: string }) => void) => {
+    const selected = await (shopify as any).resourcePicker({ type: "product", multiple: false });
+    const p = selected?.[0] ?? selected?.selection?.[0];
+    if (p) setter({ id: String(p.id), title: String(p.title) });
+  };
 
   useEffect(() => {
     if (fetcher.data?.ok) shopify.toast.show("Saved");
@@ -98,6 +135,9 @@ export default function Program() {
           </s-button>
           <s-button variant={tab === "redeeming" ? "primary" : "secondary"} onClick={() => setTab("redeeming")}>
             Redeeming program
+          </s-button>
+          <s-button variant={tab === "vip" ? "primary" : "secondary"} onClick={() => setTab("vip")}>
+            VIP Tiers
           </s-button>
         </s-stack>
       </s-section>
@@ -443,6 +483,185 @@ export default function Program() {
             </s-button>
             <s-button slot="secondary-actions" commandFor="fs-modal" command="--hide">Discard</s-button>
             <span style={{ display: "none" }}><s-button id="fs-close" commandFor="fs-modal" command="--hide">x</s-button></span>
+          </s-modal>
+        </>
+      )}
+
+      {tab === "vip" && (
+        <>
+          <s-section heading="VIP Tier Setup">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Tiers are based on customer revenue spent. Spend counts after the buffer period (protects against
+                refunds/returns). Each tier's points multiplier applies automatically to every paid order.
+              </s-paragraph>
+              <s-stack direction="inline" gap="base">
+                <s-badge tone={config.vipEnabled ? "success" : undefined}>{config.vipEnabled ? "On" : "Off"}</s-badge>
+                <s-button
+                  variant="tertiary"
+                  onClick={() => submit({ intent: "toggle_config", key: "vip_enabled", value: config.vipEnabled ? "0" : "1" })}
+                >
+                  {config.vipEnabled ? "Turn off" : "Turn on"}
+                </s-button>
+                <s-button commandFor="tb-modal" command="--show">Buffer: {config.tierBufferDays} days</s-button>
+                <s-button commandFor="tw-modal" command="--show">
+                  Window: {config.tierWindowDays > 0 ? `${config.tierWindowDays} days` : "lifetime"}
+                </s-button>
+                <s-button variant="primary" commandFor="tier-modal" command="--show">Add Tier</s-button>
+              </s-stack>
+            </s-stack>
+          </s-section>
+
+          <s-section heading="Tiers">
+            {tiers.length === 0 ? (
+              <s-paragraph>No tiers yet — add your Base tier first (entry ₹0, 1x).</s-paragraph>
+            ) : (
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header>Name</s-table-header>
+                  <s-table-header format="numeric">Entry (₹ spent)</s-table-header>
+                  <s-table-header format="numeric">Points multiplier</s-table-header>
+                  <s-table-header format="numeric">Entry bonus</s-table-header>
+                  <s-table-header>Actions</s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {tiers.map((t: any) => (
+                    <s-table-row key={t.id}>
+                      <s-table-cell>{t.name}</s-table-cell>
+                      <s-table-cell>₹{t.entry_amount}</s-table-cell>
+                      <s-table-cell>{t.multiplier}x</s-table-cell>
+                      <s-table-cell>
+                        {t.entry_reward_type === "points" && `+${t.entry_bonus_points} pts`}
+                        {t.entry_reward_type === "discount" && `${t.entry_discount_kind === "percentage" ? t.entry_discount_value + "%" : "₹" + t.entry_discount_value} code`}
+                        {t.entry_reward_type === "free_gift" && `🎁 ${t.entry_product_title ?? "gift"}`}
+                        {t.entry_reward_type === "free_shipping" && "Free shipping code"}
+                        {(!t.entry_reward_type || t.entry_reward_type === "none") && "—"}
+                        {t.ongoing_type && t.ongoing_type !== "none" &&
+                          ` · ♾ ${t.ongoing_type === "discount" ? (t.ongoing_discount_kind === "percentage" ? t.ongoing_discount_value + "%" : "₹" + t.ongoing_discount_value) : t.ongoing_type === "free_gift" ? "gift" : "free ship"}`}
+                      </s-table-cell>
+                      <s-table-cell>
+                        <s-button
+                          variant="tertiary"
+                          tone="critical"
+                          onClick={() => submit({ intent: "delete_tier", id: String(t.id) })}
+                        >
+                          Delete
+                        </s-button>
+                      </s-table-cell>
+                    </s-table-row>
+                  ))}
+                </s-table-body>
+              </s-table>
+            )}
+          </s-section>
+
+          <s-modal id="tier-modal" heading="Add Tier">
+            <s-stack direction="block" gap="base">
+              <s-text-field id="t-name" label="Tier name" placeholder="Gold" />
+              <s-number-field id="t-entry" label="Entry requirement (₹ spent)" min={0} />
+              <s-number-field id="t-mult" label="Points multiplier (e.g. 1.5)" min={1} />
+              <s-select id="t-entry-type" label="Entry reward (one-time, on entering tier)">
+                <s-option value="none">None</s-option>
+                <s-option value="points">Bonus points</s-option>
+                <s-option value="discount">Discount code</s-option>
+                <s-option value="free_gift">Free gift</s-option>
+                <s-option value="free_shipping">Free shipping</s-option>
+              </s-select>
+              <s-number-field id="t-bonus" label="↳ Bonus points (if Bonus points)" min={0} value="0" />
+              <s-select id="t-entry-kind" label="↳ Discount type (if Discount)">
+                <s-option value="amount">Amount (₹)</s-option>
+                <s-option value="percentage">Percentage (%)</s-option>
+              </s-select>
+              <s-number-field id="t-entry-value" label="↳ Discount value (if Discount)" min={0} />
+              <s-stack direction="inline" gap="base">
+                <s-button onClick={() => pickFor(setEntryGift)}>↳ Pick gift product (if Free gift)</s-button>
+                <s-text>{entryGift ? entryGift.title : "—"}</s-text>
+              </s-stack>
+
+              <s-select id="t-ongoing-type" label="Ongoing privilege (permanent personal code while in tier)">
+                <s-option value="none">None</s-option>
+                <s-option value="discount">Discount code</s-option>
+                <s-option value="free_gift">Free gift</s-option>
+                <s-option value="free_shipping">Free shipping</s-option>
+              </s-select>
+              <s-select id="t-ongoing-kind" label="↳ Discount type (if Discount)">
+                <s-option value="amount">Amount (₹)</s-option>
+                <s-option value="percentage">Percentage (%)</s-option>
+              </s-select>
+              <s-number-field id="t-ongoing-value" label="↳ Discount value (if Discount)" min={0} />
+              <s-stack direction="inline" gap="base">
+                <s-button onClick={() => pickFor(setOngoingGift)}>↳ Pick gift product (if Free gift)</s-button>
+                <s-text>{ongoingGift ? ongoingGift.title : "—"}</s-text>
+              </s-stack>
+            </s-stack>
+            <s-button
+              slot="primary-action"
+              variant="primary"
+              onClick={() => {
+                submit({
+                  intent: "create_tier",
+                  name: val("t-name") || "Tier",
+                  entry_amount: val("t-entry") || "0",
+                  multiplier: val("t-mult") || "1",
+                  entry_bonus_points: val("t-bonus") || "0",
+                  entry_reward_type: val("t-entry-type") || "none",
+                  entry_discount_kind: val("t-entry-kind") || "amount",
+                  entry_discount_value: val("t-entry-value"),
+                  entry_product_id: entryGift?.id ?? "",
+                  entry_product_title: entryGift?.title ?? "",
+                  ongoing_type: val("t-ongoing-type") || "none",
+                  ongoing_discount_kind: val("t-ongoing-kind") || "amount",
+                  ongoing_discount_value: val("t-ongoing-value"),
+                  ongoing_product_id: ongoingGift?.id ?? "",
+                  ongoing_product_title: ongoingGift?.title ?? "",
+                });
+                setEntryGift(null);
+                setOngoingGift(null);
+                closeModal("t-close");
+              }}
+            >
+              Save
+            </s-button>
+            <s-button slot="secondary-actions" commandFor="tier-modal" command="--hide">Discard</s-button>
+            <span style={{ display: "none" }}><s-button id="t-close" commandFor="tier-modal" command="--hide">x</s-button></span>
+          </s-modal>
+
+          <s-modal id="tb-modal" heading="Revenue buffer period">
+            <s-number-field id="tb-days" label="Spend is counted after (days)" min={0} value={String(config.tierBufferDays)} />
+            <s-button
+              slot="primary-action"
+              variant="primary"
+              onClick={() => {
+                submit({ intent: "save_tier_buffer", days: val("tb-days") });
+                closeModal("tb-close");
+              }}
+            >
+              Save
+            </s-button>
+            <s-button slot="secondary-actions" commandFor="tb-modal" command="--hide">Discard</s-button>
+            <span style={{ display: "none" }}><s-button id="tb-close" commandFor="tb-modal" command="--hide">x</s-button></span>
+          </s-modal>
+
+          <s-modal id="tw-modal" heading="Tier window (demotion)">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Tier is calculated from spend within this rolling window — old spend ages out, so customers demote
+                automatically if they stop buying. 0 = lifetime spend, no demotion.
+              </s-paragraph>
+              <s-number-field id="tw-days" label="Window (days, e.g. 180)" min={0} value={String(config.tierWindowDays)} />
+            </s-stack>
+            <s-button
+              slot="primary-action"
+              variant="primary"
+              onClick={() => {
+                submit({ intent: "save_tier_window", days: val("tw-days") });
+                closeModal("tw-close");
+              }}
+            >
+              Save
+            </s-button>
+            <s-button slot="secondary-actions" commandFor="tw-modal" command="--hide">Discard</s-button>
+            <span style={{ display: "none" }}><s-button id="tw-close" commandFor="tw-modal" command="--hide">x</s-button></span>
           </s-modal>
         </>
       )}
