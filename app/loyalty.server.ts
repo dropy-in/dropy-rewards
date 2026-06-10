@@ -209,3 +209,155 @@ export async function deleteProgram(id: number) {
   const { error } = await supabase.from("loyalty_programs").delete().eq("id", id);
   if (error) throw error;
 }
+
+// ---------- Phase 4: redemption engine ----------
+
+const genCode = () =>
+  "DRPY-" + Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+
+async function createShopifyReward(admin: any, program: any, customerId: string) {
+  const customerGid = `gid://shopify/Customer/${customerId}`;
+  const code = genCode();
+  const base = {
+    title: `Rewards: ${program.name} (${code})`,
+    code,
+    startsAt: new Date().toISOString(),
+    usageLimit: 1,
+    appliesOncePerCustomer: true,
+    customerSelection: { customers: { add: [customerGid] } },
+  };
+
+  if (program.type === "store_credit") {
+    const shopRes = await admin.graphql(`{ shop { currencyCode } }`);
+    const currency = (await shopRes.json()).data.shop.currencyCode;
+    const amount = Number(program.discount_value ?? 0).toFixed(2);
+    const res = await admin.graphql(
+      `#graphql
+      mutation credit($id: ID!, $creditInput: StoreCreditAccountCreditInput!) {
+        storeCreditAccountCredit(id: $id, creditInput: $creditInput) {
+          storeCreditAccountTransaction { amount { amount currencyCode } }
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: customerGid, creditInput: { creditAmount: { amount, currencyCode: currency } } } },
+    );
+    const j = await res.json();
+    if (j.errors) throw new Error("GraphQL: " + JSON.stringify(j.errors));
+    const errs = j.data?.storeCreditAccountCredit?.userErrors;
+    if (errs?.length) throw new Error(errs.map((e: any) => e.message).join(", "));
+    return { code: null, detail: `₹${amount} store credit added` };
+  }
+
+  if (program.type === "free_shipping") {
+    const res = await admin.graphql(
+      `#graphql
+      mutation fs($d: DiscountCodeFreeShippingInput!) {
+        discountCodeFreeShippingCreate(freeShippingCodeDiscount: $d) {
+          codeDiscountNode { id }
+          userErrors { field message }
+        }
+      }`,
+      { variables: { d: { ...base } } },
+    );
+    const j = await res.json();
+    const errs = j.data?.discountCodeFreeShippingCreate?.userErrors;
+    if (errs?.length) throw new Error(errs.map((e: any) => e.message).join(", "));
+    return { code, detail: "Free shipping code" };
+  }
+
+  // discount + free_gift → basic code discount
+  const isGift = program.type === "free_gift";
+  const customerGets = isGift
+    ? {
+        value: { percentage: 1.0 },
+        items: { products: { productsToAdd: [program.product_id] } },
+      }
+    : {
+        value:
+          program.discount_kind === "percentage"
+            ? { percentage: Number(program.discount_value) / 100 }
+            : { discountAmount: { amount: Number(program.discount_value).toFixed(2), appliesOnEachItem: false } },
+        items: { all: true },
+      };
+
+  const d: any = { ...base, customerGets };
+  if (Number(program.min_order_amount) > 0) {
+    d.minimumRequirement = { subtotal: { greaterThanOrEqualToSubtotal: Number(program.min_order_amount).toFixed(2) } };
+  }
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation basic($d: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $d) {
+        codeDiscountNode { id }
+        userErrors { field message }
+      }
+    }`,
+    { variables: { d } },
+  );
+  const j = await res.json();
+  const errs = j.data?.discountCodeBasicCreate?.userErrors;
+  if (errs?.length) throw new Error(errs.map((e: any) => e.message).join(", "));
+  return { code, detail: isGift ? `Free: ${program.product_title}` : "Discount code" };
+}
+
+export async function redeemProgram(admin: any, customerId: string, programId: number) {
+  const { data: program } = await supabase.from("loyalty_programs").select("*").eq("id", programId).maybeSingle();
+  if (!program || !program.active) return { ok: false, error: "Program not available" };
+
+  const { data: bal } = await supabase.from("loyalty_balances").select("*").eq("customer_id", customerId).maybeSingle();
+  const available = bal?.available ?? 0;
+  if (available < program.points_required) return { ok: false, error: "Not enough points" };
+
+  // 1) deduct points
+  const { data: ledgerRow, error: ledgerErr } = await supabase
+    .from("loyalty_ledger")
+    .insert({
+      customer_id: customerId,
+      type: "redeem",
+      points: -program.points_required,
+      note: `redeem: ${program.name}`,
+    })
+    .select("id")
+    .single();
+  if (ledgerErr) throw ledgerErr;
+
+  // 2) create the reward in Shopify — rollback points on failure
+  let reward;
+  try {
+    reward = await createShopifyReward(admin, program, customerId);
+  } catch (e) {
+    console.error("[redeem] reward creation failed:", e);
+    await supabase.from("loyalty_ledger").delete().eq("id", ledgerRow.id);
+    return { ok: false, error: "Could not create reward. Points not deducted." };
+  }
+
+  // 3) record redemption
+  await supabase.from("loyalty_redemptions").insert({
+    customer_id: customerId,
+    ledger_id: ledgerRow.id,
+    program_id: program.id,
+    reward_type: program.type,
+    points_spent: program.points_required,
+    value_paise: program.discount_value ? Math.round(Number(program.discount_value) * 100) : null,
+    shopify_ref: reward.code,
+  });
+
+  return { ok: true, type: program.type, name: program.name, code: reward.code, detail: reward.detail };
+}
+
+export async function listCoupons(customerId: string) {
+  const { data } = await supabase
+    .from("loyalty_redemptions")
+    .select("shopify_ref, reward_type, points_spent, created_at, loyalty_programs(name)")
+    .eq("customer_id", customerId)
+    .order("id", { ascending: false })
+    .limit(5);
+  return (data ?? []).map((r: any) => ({
+    code: r.shopify_ref,
+    type: r.reward_type,
+    name: r.loyalty_programs?.name ?? r.reward_type,
+    points: r.points_spent,
+    date: r.created_at,
+  }));
+}

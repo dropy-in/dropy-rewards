@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { supabase } from "../supabase.server";
-import { getConfig, listPrograms } from "../loyalty.server";
+import { getConfig, listPrograms, listCoupons } from "../loyalty.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request); // verifies Shopify signature
@@ -9,6 +9,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cid = url.searchParams.get("logged_in_customer_id") || "";
 
   const [cfg, allPrograms] = await Promise.all([getConfig(), listPrograms()]);
+  const coupons = cid ? await listCoupons(cid) : [];
   const programs = allPrograms.filter((p: any) => p.active);
 
   let balance = { available: 0, pending: 0, lifetime_earned: 0 };
@@ -23,6 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return Response.json({
     loggedIn: Boolean(cid),
+    coupons,
     balance,
     config: {
       earnAmount: cfg.earnAmount,
@@ -43,7 +45,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           ? `${p.discount_kind === "percentage" ? p.discount_value + "%" : "₹" + p.discount_value} off`
           : p.type === "free_gift"
             ? p.product_title || "Free gift"
-            : "Free shipping",
+            : p.type === "store_credit"
+              ? `₹${p.discount_value} store credit`
+              : "Free shipping",
     })),
   });
 };

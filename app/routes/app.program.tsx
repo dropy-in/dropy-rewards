@@ -60,6 +60,7 @@ const val = (id: string) => String((document.getElementById(id) as any)?.value ?
 const closeModal = (id: string) => (document.getElementById(id) as any)?.click?.();
 
 const TYPE_LABEL: Record<string, string> = {
+  store_credit: "Store Credit Program",
   discount: "Discount Program",
   free_gift: "Free Gift Program",
   free_shipping: "Free Shipping Program",
@@ -256,7 +257,7 @@ export default function Program() {
           <s-section heading="Programs">
             <s-stack direction="block" gap="base">
               <s-stack direction="inline" gap="base">
-                {["all", "discount", "free_gift", "free_shipping"].map((f) => (
+                {["all", "store_credit", "discount", "free_gift", "free_shipping"].map((f) => (
                   <s-button key={f} variant={filter === f ? "primary" : "secondary"} onClick={() => setFilter(f)}>
                     {f === "all" ? "All" : TYPE_LABEL[f]}
                   </s-button>
@@ -284,6 +285,7 @@ export default function Program() {
                             `${p.discount_kind === "percentage" ? `${p.discount_value}%` : `₹${p.discount_value}`} off · min ₹${p.min_order_amount}`}
                           {p.type === "free_gift" && `${p.product_title ?? "—"} · min ₹${p.min_order_amount}`}
                           {p.type === "free_shipping" && "Free shipping"}
+                          {p.type === "store_credit" && `₹${p.discount_value} store credit`}
                         </s-table-cell>
                         <s-table-cell>{p.points_required}</s-table-cell>
                         <s-table-cell>
@@ -313,6 +315,41 @@ export default function Program() {
               )}
             </s-stack>
           </s-section>
+
+          <s-section heading="Store Credit Program">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>Exchange points for native Shopify store credit — applies at checkout automatically.</s-paragraph>
+              <s-stack direction="inline" gap="base">
+                <s-button commandFor="sc-modal" command="--show">Create</s-button>
+              </s-stack>
+            </s-stack>
+          </s-section>
+
+          <s-modal id="sc-modal" heading="Store Credit Program">
+            <s-stack direction="block" gap="base">
+              <s-text-field id="sc-name" label="Program name" placeholder="₹100 store credit" />
+              <s-number-field id="sc-value" label="Credit amount (₹)" min={1} />
+              <s-number-field id="sc-points" label="Redeem points" min={1} />
+            </s-stack>
+            <s-button
+              slot="primary-action"
+              variant="primary"
+              onClick={() => {
+                submit({
+                  intent: "create_program", type: "store_credit",
+                  name: val("sc-name") || "Store credit",
+                  discount_value: val("sc-value"),
+                  points_required: val("sc-points"),
+                  min_order_amount: "0",
+                });
+                closeModal("sc-close");
+              }}
+            >
+              Save
+            </s-button>
+            <s-button slot="secondary-actions" commandFor="sc-modal" command="--hide">Discard</s-button>
+            <span style={{ display: "none" }}><s-button id="sc-close" commandFor="sc-modal" command="--hide">x</s-button></span>
+          </s-modal>
 
           {/* Discount modal */}
           <s-modal id="dp-modal" heading="Discount program">
