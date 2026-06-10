@@ -36,6 +36,7 @@
   door.innerHTML =
     (style !== "text" ? ICON : "") +
     (style !== "icon" ? "<span>" + esc(d.doorText || "Rewards") + "</span>" : "");
+  if (style === "icon") door.classList.add("dr-icon");
   document.body.appendChild(door);
 
   var panel = document.createElement("div");
