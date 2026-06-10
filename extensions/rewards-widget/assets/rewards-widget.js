@@ -31,7 +31,7 @@
 
   var door = document.createElement("button");
   door.className = "dr-door dr-" + pos;
-  door.style.background = C;
+  door.style.setProperty("--dr-c", C);
   var style = d.doorStyle || "icon_text";
   door.innerHTML =
     (style !== "text" ? ICON : "") +
@@ -40,8 +40,9 @@
 
   var panel = document.createElement("div");
   panel.className = "dr-panel dr-" + pos;
+  panel.style.setProperty("--dr-c", C);
   panel.innerHTML =
-    '<div class="dr-head" style="background:' + C + '">' +
+    '<div class="dr-head"><span class="dr-orb1"></span><span class="dr-orb2"></span>' +
     '<div class="dr-welcome">' + esc(d.welcome || "Welcome") + "</div>" +
     '<div class="dr-name">' + esc(d.customerName || "") + "</div>" +
     '<button class="dr-x" aria-label="Close">&times;</button></div>' +
@@ -57,25 +58,41 @@
   door.addEventListener("click", function () { toggle(!open); });
   panel.querySelector(".dr-x").addEventListener("click", function () { toggle(false); });
 
+  function nextRewardHTML(res) {
+    if (!res.loggedIn || !res.programs.length) return "";
+    var avail = res.balance.available;
+    var sorted = res.programs.slice().sort(function (a, b) { return a.points - b.points; });
+    var next = null;
+    for (var i = 0; i < sorted.length; i++) if (sorted[i].points > avail) { next = sorted[i]; break; }
+    if (!next) {
+      return '<div class="dr-prog-row"><span>All rewards unlocked ✨</span></div>' +
+        '<div class="dr-track"><div class="dr-fill" style="width:100%"></div></div>';
+    }
+    var pct = Math.min(100, Math.round((avail / next.points) * 100));
+    return '<div class="dr-prog-row"><span>Next: ' + esc(next.name) + "</span><span>" + avail + " / " + next.points + "</span></div>" +
+      '<div class="dr-track"><div class="dr-fill" style="width:' + pct + '%"></div></div>';
+  }
+
   function render(res, flash) {
     var body = panel.querySelector(".dr-body");
     var rupee = (res.config.pointValuePaise / 100).toFixed(2);
     var h = "";
 
-    if (flash) h += '<div class="dr-card" style="border-color:' + C + ';background:#fff7f0">' + flash + "</div>";
+    if (flash) h += '<div class="dr-card dr-flash">' + flash + "</div>";
 
     if (res.loggedIn) {
       h +=
-        '<div class="dr-card dr-points"><div><div class="dr-big">' + res.balance.available +
+        '<div class="dr-card"><div class="dr-points"><div><div class="dr-big">' + res.balance.available +
         '</div><div class="dr-sub">Points available</div></div>' +
-        '<div><div class="dr-pend">Pending: ' + res.balance.pending +
-        '</div><div class="dr-sub">1 pt = ₹' + rupee + "</div></div></div>";
+        '<div style="text-align:right"><span class="dr-pend">Pending: ' + res.balance.pending +
+        '</span><div class="dr-sub" style="margin-top:5px">1 pt = ₹' + rupee + "</div></div></div>" +
+        nextRewardHTML(res) + "</div>";
     } else {
       h +=
         '<div class="dr-card"><b>Sign in to see your points</b><br>' +
         '<span class="dr-sub">Earn on every order' +
         (res.config.signupEnabled ? " · +" + res.config.signupPoints + " pts just for joining" : "") +
-        '</span><br><a class="dr-btn" style="background:' + C + '" href="' +
+        '</span><br><a class="dr-btn" style="margin-top:10px" href="' +
         esc(d.accountUrl || "/account") + '">Sign in / Join</a></div>';
     }
 
@@ -93,8 +110,7 @@
         h +=
           '<div class="dr-prog"><div><b>' + esc(p.name) + '</b><div class="dr-sub">' + esc(p.detail) +
           '</div></div><button class="dr-redeem dr-btn" ' + (can ? "" : "disabled ") +
-          'style="background:' + (can ? C : "#ccc") + '" data-id="' + p.id + '">' +
-          p.points + " pts</button></div>";
+          'data-id="' + p.id + '">' + p.points + " pts</button></div>";
       });
       h += "</div>";
     }
@@ -103,11 +119,13 @@
       h += '<div class="dr-card"><div class="dr-title">My coupons</div>';
       res.coupons.forEach(function (c) {
         h +=
-          '<div class="dr-prog"><div><b>' + esc(c.name) + '</b><div class="dr-sub">' +
-          (c.code ? "Code: <b>" + esc(c.code) + "</b>" : "Store credit — auto-applies") +
-          "</div></div>" +
+          '<div class="dr-prog"><div><b>' + esc(c.name) + "</b><br>" +
           (c.code
-            ? '<button class="dr-btn dr-copy" style="background:' + C + '" data-code="' + esc(c.code) + '">Copy</button>'
+            ? '<span class="dr-code">' + esc(c.code) + "</span>"
+            : '<span class="dr-sub">Store credit — auto-applies at checkout</span>') +
+          "</div>" +
+          (c.code
+            ? '<button class="dr-btn dr-copy" data-code="' + esc(c.code) + '">Copy</button>'
             : "") +
           "</div>";
       });
@@ -122,11 +140,11 @@
         btn.textContent = "…";
         xhr("POST", "/apps/rewards/redeem", "program_id=" + encodeURIComponent(btn.dataset.id), function (err, r) {
           if (err || !r || !r.ok) {
-            load((r && r.error) ? '<b style="color:#c00">' + esc(r.error) + "</b>" : '<b style="color:#c00">Something went wrong</b>');
+            load((r && r.error) ? '<b style="color:#c2410c">' + esc(r.error) + "</b>" : '<b style="color:#c2410c">Something went wrong</b>');
             return;
           }
           var msg = "🎉 <b>" + esc(r.name) + "</b> redeemed!";
-          if (r.code) msg += "<br>Your code: <b>" + esc(r.code) + "</b>";
+          if (r.code) msg += '<br>Your code: <span class="dr-code">' + esc(r.code) + "</span>";
           else msg += "<br>" + esc(r.detail);
           load(msg);
         });
