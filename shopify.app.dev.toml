@@ -1,0 +1,45 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "b0ff0c6c254744081aea22e2ff792cf0"
+application_url = "https://shopify.dev/apps/default-app-home"
+embedded = true
+name = "dropy-rewards-dev"
+
+[access_scopes]
+scopes = "read_orders,read_customers,write_discounts,read_store_credit_accounts,write_store_credit_account_transactions,read_metaobjects,write_metaobjects"
+
+[auth]
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/paid"
+  topics = [ "orders/paid" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/refunds/create"
+  topics = [ "refunds/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/create"
+  topics = [ "customers/create" ]
+
+[app_proxy]
+url = "https://shopify.dev/proxy"
+subpath = "rewards"
+prefix = "apps"
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+dev_store_url = "dropy-rewards-dev.myshopify.com"
