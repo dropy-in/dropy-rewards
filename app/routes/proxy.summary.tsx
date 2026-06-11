@@ -8,20 +8,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const cid = url.searchParams.get("logged_in_customer_id") || "";
 
-  const [cfg, allPrograms] = await Promise.all([getConfig(), listPrograms()]);
-  const coupons = cid ? await listCoupons(cid) : [];
-  const tier = cid ? await tierStatus(cid) : null;
+  const [cfg, allPrograms, coupons, tier, balanceRes] = await Promise.all([
+    getConfig(),
+    listPrograms(),
+    cid ? listCoupons(cid) : Promise.resolve([]),
+    cid ? tierStatus(cid) : Promise.resolve(null),
+    cid
+      ? supabase.from("loyalty_balances").select("*").eq("customer_id", cid).maybeSingle()
+      : Promise.resolve({ data: null } as any),
+  ]);
   const programs = allPrograms.filter((p: any) => p.active);
 
   let balance = { available: 0, pending: 0, lifetime_earned: 0 };
-  if (cid) {
-    const { data } = await supabase
-      .from("loyalty_balances")
-      .select("*")
-      .eq("customer_id", cid)
-      .maybeSingle();
-    if (data) balance = data as any;
-  }
+  if ((balanceRes as any)?.data) balance = (balanceRes as any).data;
 
   return Response.json({
     loggedIn: Boolean(cid),
