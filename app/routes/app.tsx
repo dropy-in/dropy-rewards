@@ -20,6 +20,7 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app">Dashboard</s-link>
         <s-link href="/app/program">Loyalty Program</s-link>
+        <s-link href="/app/gift">Free Gift</s-link>
         <s-link href="/app/customers">Customers</s-link>
         <s-link href="/app/transactions">Transactions</s-link>
       </s-app-nav>

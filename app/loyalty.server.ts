@@ -374,7 +374,7 @@ export async function listCoupons(customerId: string) {
     .order("id", { ascending: false })
     .limit(5);
   return (data ?? []).map((r: any) => ({
-    code: r.shopify_ref,
+    code: r.reward_type === "store_credit" ? null : r.shopify_ref,
     type: r.reward_type,
     name: r.title ?? r.loyalty_programs?.name ?? r.reward_type,
     points: r.points_spent,

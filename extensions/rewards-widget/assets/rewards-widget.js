@@ -187,3 +187,252 @@
     });
   }
 })();
+
+/* ───────── Dropy Free Gift Popup (config-driven port of theme popup) ───────── */
+(function () {
+  function gxhr(method, url, body, cb) {
+    var x = new XMLHttpRequest();
+    x.open(method, url, true);
+    x.onload = function () {
+      var data = null;
+      try { data = JSON.parse(x.responseText); } catch (e) {}
+      cb(x.status >= 200 && x.status < 300 ? null : new Error("HTTP " + x.status), data);
+    };
+    x.onerror = function () { cb(new Error("network"), null); };
+    if (body != null) {
+      x.setRequestHeader("Content-Type", "application/json");
+      x.send(body);
+    } else x.send();
+  }
+
+  gxhr("GET", "/apps/rewards/gift/config", null, function (err, cfg) {
+    if (err || !cfg || !cfg.enabled || !cfg.handles || !cfg.handles.length) return;
+    initGift(cfg.threshold || 249900, cfg.handles);
+  });
+
+  function initGift(GIFT_THRESHOLD, GIFT_HANDLES) {
+    var giftVariantIds = [];
+
+    var host = document.createElement("div");
+    host.innerHTML =
+      '<div class="dropy-gift-overlay" id="dropyGiftOverlay">' +
+      '<div class="dropy-gift-modal">' +
+      '<div class="dropy-gift-header">' +
+      '<button class="dropy-gift-close" id="dropyGiftClose">&times;</button>' +
+      "<h3>🎁 Choose Your <span>FREE Gift!</span></h3>" +
+      "<p>Pick 1 CeraVe travel-size product — on us!</p>" +
+      "</div>" +
+      '<div class="dropy-gift-body" id="dropyGiftBody"></div>' +
+      '<div class="dropy-gift-footer">1 free CeraVe travel-size included with orders above ₹' +
+      Math.round(GIFT_THRESHOLD / 100).toLocaleString("en-IN") +
+      "</div>" +
+      "</div>" +
+      "</div>";
+    document.body.appendChild(host.firstChild);
+
+    var overlay = document.getElementById("dropyGiftOverlay");
+    var bodyEl = document.getElementById("dropyGiftBody");
+    var closeBtn = document.getElementById("dropyGiftClose");
+    if (!overlay || !bodyEl) return;
+
+    var lastPopupClose = 0;
+    var COOLDOWN = 60000;
+    var giftAlreadyInCart = false;
+    var lastCartTotal = -1;
+    var popupShownForThisTotal = false;
+    var giftManuallyRemoved = sessionStorage.getItem("dropyGiftRemoved") === "true";
+
+    function showPopup() {
+      overlay.classList.add("dropy-gift-show");
+      document.body.style.overflow = "hidden";
+      popupShownForThisTotal = true;
+      sessionStorage.setItem("dropyGiftPopupSeen", "true");
+    }
+    function hidePopup() {
+      overlay.classList.remove("dropy-gift-show");
+      document.body.style.overflow = "";
+      lastPopupClose = Date.now();
+    }
+    closeBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      hidePopup();
+    });
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) hidePopup();
+    });
+
+    function loadProducts(callback) {
+      var loaded = 0,
+        products = [];
+      GIFT_HANDLES.forEach(function (handle, i) {
+        var x = new XMLHttpRequest();
+        x.open("GET", "/products/" + handle + ".js", true);
+        x.onload = function () {
+          if (x.status === 200) {
+            try {
+              var p = JSON.parse(x.responseText);
+              products[i] = p;
+              giftVariantIds.push(p.variants[0].id);
+            } catch (e) {}
+          }
+          loaded++;
+          if (loaded === GIFT_HANDLES.length) callback(products);
+        };
+        x.onerror = function () {
+          loaded++;
+          if (loaded === GIFT_HANDLES.length) callback(products);
+        };
+        x.send();
+      });
+    }
+
+    function renderProducts(products) {
+      var html = "";
+      products.forEach(function (p) {
+        if (!p) return;
+        var v = p.variants[0];
+        var img = p.images[0] ? p.images[0].replace(/(\.\w+)\?/, "_200x200$1?") : "";
+        var originalPrice = (v.compare_at_price || v.price) / 100;
+        html += '<div class="dropy-gift-card" data-variant-id="' + v.id + '">';
+        html += '<img class="dropy-gift-img" src="' + img + '" alt="' + p.title + '">';
+        html += '<div class="dropy-gift-info">';
+        html += '<p class="dropy-gift-name">' + p.title + "</p>";
+        html +=
+          '<p class="dropy-gift-price"><s>₹' + originalPrice.toLocaleString("en-IN") + "</s><span>FREE</span></p>";
+        html += "</div>";
+        html += '<button class="dropy-gift-btn" data-variant-id="' + v.id + '">Add</button>';
+        html += "</div>";
+      });
+      bodyEl.innerHTML = html;
+
+      bodyEl.querySelectorAll(".dropy-gift-btn").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var variantId = btn.getAttribute("data-variant-id");
+          var card = btn.closest(".dropy-gift-card");
+          card.classList.add("dropy-gift-adding");
+          btn.textContent = "Adding...";
+          gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1 }), function (err) {
+            if (err) {
+              btn.textContent = "Retry";
+              card.classList.remove("dropy-gift-adding");
+              return;
+            }
+            btn.textContent = "Added ✓";
+            btn.classList.add("dropy-gift-btn-done");
+            card.classList.remove("dropy-gift-adding");
+            card.classList.add("dropy-gift-added");
+            giftAlreadyInCart = true;
+            sessionStorage.setItem("dropyGiftWasAdded", "true");
+            bodyEl.querySelectorAll(".dropy-gift-btn").forEach(function (b) {
+              if (b !== btn) {
+                b.disabled = true;
+                b.style.opacity = "0.4";
+              }
+            });
+            removeClaimButtons();
+            setTimeout(function () {
+              hidePopup();
+              window.location.reload();
+            }, 600);
+          });
+        });
+      });
+      bodyEl.querySelectorAll(".dropy-gift-card").forEach(function (card) {
+        card.addEventListener("click", function () {
+          var btn = card.querySelector(".dropy-gift-btn");
+          if (btn && !btn.classList.contains("dropy-gift-btn-done") && !btn.disabled) btn.click();
+        });
+      });
+    }
+
+    function addClaimButton() {
+      document.querySelectorAll(".dropy-gift-claim").forEach(function (el) {
+        el.remove();
+      });
+      if (giftAlreadyInCart) return;
+      var targets = document.querySelectorAll(".cart-drawer__free-shipping, .main-cart__free-shipping");
+      targets.forEach(function (target) {
+        if (target.querySelector(".dropy-gift-claim")) return;
+        var btn = document.createElement("button");
+        btn.className = "dropy-gift-claim";
+        btn.innerHTML = "🎁 Claim Your FREE Gift";
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          showPopup();
+        });
+        target.appendChild(btn);
+      });
+    }
+    function removeClaimButtons() {
+      document.querySelectorAll(".dropy-gift-claim").forEach(function (el) {
+        el.remove();
+      });
+    }
+
+    function pollCart() {
+      var x = new XMLHttpRequest();
+      x.open("GET", "/cart.js?_=" + Date.now(), true);
+      x.onload = function () {
+        if (x.status !== 200) return;
+        try {
+          var c = JSON.parse(x.responseText);
+        } catch (e) {
+          return;
+        }
+        var total = c.total_price || 0;
+
+        giftAlreadyInCart = false;
+        if (c.items) {
+          for (var i = 0; i < c.items.length; i++) {
+            if (giftVariantIds.indexOf(c.items[i].variant_id) !== -1) {
+              giftAlreadyInCart = true;
+              break;
+            }
+          }
+        }
+
+        var totalWithoutGift = total;
+        if (c.items) {
+          c.items.forEach(function (item) {
+            if (giftVariantIds.indexOf(item.variant_id) !== -1) totalWithoutGift -= item.final_line_price;
+          });
+        }
+
+        if (total !== lastCartTotal) {
+          if (total > lastCartTotal && !giftAlreadyInCart && totalWithoutGift >= GIFT_THRESHOLD) {
+            giftManuallyRemoved = false;
+            sessionStorage.removeItem("dropyGiftRemoved");
+          }
+          lastCartTotal = total;
+          popupShownForThisTotal = false;
+        }
+
+        if (!giftAlreadyInCart && sessionStorage.getItem("dropyGiftWasAdded") === "true") {
+          giftManuallyRemoved = true;
+          sessionStorage.setItem("dropyGiftRemoved", "true");
+        }
+
+        if (totalWithoutGift >= GIFT_THRESHOLD && !giftAlreadyInCart) {
+          setTimeout(addClaimButton, 300);
+          if (sessionStorage.getItem("dropyGiftPopupSeen") !== "true" && !giftManuallyRemoved) {
+            showPopup();
+          }
+        } else {
+          removeClaimButtons();
+          if (totalWithoutGift < GIFT_THRESHOLD) {
+            sessionStorage.removeItem("dropyGiftPopupSeen");
+          }
+        }
+      };
+      x.send();
+    }
+
+    window.dropyGiftSync = pollCart;
+    loadProducts(function (products) {
+      renderProducts(products);
+      setTimeout(pollCart, 300);
+    });
+  }
+})();
