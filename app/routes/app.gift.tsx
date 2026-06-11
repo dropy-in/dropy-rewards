@@ -4,7 +4,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { supabase } from "../supabase.server";
-import { updateConfig, setConfigKey } from "../loyalty.server";
+import { setConfigKey } from "../loyalty.server";
 
 type GiftProduct = { handle: string; title: string };
 
@@ -46,15 +46,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {
       products = [];
     }
-    await updateConfig({
-      gift_threshold_paise: String(Math.round(rupees * 100)),
-      gift_products: JSON.stringify(
-        products
-          .filter((p) => p && p.handle)
-          .slice(0, 3)
-          .map((p) => ({ handle: String(p.handle), title: String(p.title ?? p.handle) })),
-      ),
-    });
+    const { error } = await supabase.from("loyalty_config").upsert([
+      { key: "gift_threshold_paise", value: String(Math.round(rupees * 100)) },
+      {
+        key: "gift_products",
+        value: JSON.stringify(
+          products
+            .filter((p) => p && p.handle)
+            .slice(0, 3)
+            .map((p) => ({ handle: String(p.handle), title: String(p.title ?? p.handle) })),
+        ),
+      },
+    ]);
+    if (error) throw error;
     return { ok: true };
   }
 

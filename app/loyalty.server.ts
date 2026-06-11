@@ -193,7 +193,7 @@ export async function recentWebhooks(n = 8) {
 // ---------- Phase 2.5: redemption programs + toggles ----------
 
 export async function setConfigKey(key: string, value: string) {
-  const allowed = ["place_order_enabled", "signup_enabled", "vip_enabled"];
+  const allowed = ["place_order_enabled", "signup_enabled", "vip_enabled", "gift_enabled"];
   if (!allowed.includes(key)) throw new Error("key not allowed");
   const { error } = await supabase.from("loyalty_config").upsert({ key, value: value === "1" ? "1" : "0" });
   if (error) throw error;
