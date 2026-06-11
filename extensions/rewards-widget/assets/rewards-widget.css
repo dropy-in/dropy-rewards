@@ -103,13 +103,15 @@
   position: relative;
   padding: 20px 22px 18px;
   color: #fff;
-  background: linear-gradient(135deg, #fdba74, var(--dr-c) 45%, var(--dr-c2));
+  background: color-mix(in srgb, var(--dr-c) 82%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
   overflow: hidden;
   flex-shrink: 0;
 }
 
-.dr-orb1,
-.dr-orb2 {
+.dr-orb1, .dr-orb2 {
+  display: none;
   position: absolute;
   border-radius: 50%;
   filter: blur(28px);
