@@ -7,6 +7,8 @@
   data-door-style="{{ block.settings.door_style }}"
   data-welcome="{{ block.settings.welcome_text | escape }}"
   data-position="{{ block.settings.position }}"
+  data-offset-desktop="{{ block.settings.offset_desktop | default: 20 }}"
+  data-offset-mobile="{{ block.settings.offset_mobile | default: 88 }}"
   data-account-url="{{ routes.account_url }}"
 ></div>
 {{ 'rewards-widget.css' | asset_url | stylesheet_tag }}
@@ -36,7 +38,9 @@
         { "value": "left", "label": "Bottom left" }
       ],
       "default": "right"
-    }
+    },
+    { "type": "range", "id": "offset_desktop", "label": "Bottom offset — desktop", "min": 0, "max": 200, "step": 2, "unit": "px", "default": 20 },
+    { "type": "range", "id": "offset_mobile", "label": "Bottom offset — mobile", "min": 0, "max": 200, "step": 2, "unit": "px", "default": 88 }
   ]
 }
 {% endschema %}

@@ -50,6 +50,13 @@
     '<div class="dr-body"><div class="dr-card">Loading…</div></div>';
   document.body.appendChild(panel);
 
+  var offD = parseInt(d.offsetDesktop || "20", 10) || 20;
+  var offM = parseInt(d.offsetMobile || "88", 10) || 88;
+  [door, panel].forEach(function (el) {
+    el.style.setProperty("--dr-off", offD + "px");
+    el.style.setProperty("--dr-off-m", offM + "px");
+  });
+
   var open = false;
   function toggle(v) {
     open = v;
