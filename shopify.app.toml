@@ -2,7 +2,7 @@
 
 client_id = "00eed29be4a0e452a193f75c45788711"
 name = "dropy-rewards"
-application_url = "https://example.com"
+application_url = "https://dropy-rewards.vercel.app"
 embedded = true
 
 [access_scopes]
@@ -32,13 +32,16 @@ api_version = "2026-07"
   topics = [ "customers/create" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [
+  "https://dropy-rewards.vercel.app/auth/callback",
+  "https://dropy-rewards.vercel.app/auth/shopify/callback",
+  "https://dropy-rewards.vercel.app/api/auth/callback"
+]
 
 [app_proxy]
-url = "https://example.com/proxy"
+url = "https://dropy-rewards.vercel.app/proxy"
 subpath = "rewards"
 prefix = "apps"
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true
