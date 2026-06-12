@@ -211,18 +211,12 @@ async function claimCampaignCard(
   if (cc.expires_at && new Date(cc.expires_at).getTime() <= Date.now())
     return { ok: false, error: "EXPIRED", status: "expired", message: "This card has expired.", http: 409 };
 
-  // (c) ORDER GATE — must have placed at least one Dropy order. Also fetches the shop currency
-  // we need for the credit below, in the same round-trip.
+  // (c) No order gate: campaign cards are acquisition cards aimed at brand-new customers (0
+  // orders by design). We only fetch the shop currency needed for the credit below.
   const customerGid = `gid://shopify/Customer/${customerId}`;
   const info = await gql(admin, `#graphql
-    query CampaignClaimInfo($id: ID!) {
-      shop { currencyCode }
-      customer(id: $id) { numberOfOrders }
-    }`, { id: customerGid });
+    query CampaignClaimInfo { shop { currencyCode } }`);
   const currency = info.shop.currencyCode;
-  const orders = Number(info.customer?.numberOfOrders ?? 0);
-  if (!(orders >= 1))
-    return { ok: false, error: "ORDER_REQUIRED", message: "This card unlocks after your first Dropy order.", http: 403 };
 
   // (d) RESERVATION — claim the per-customer slot first. The (card_number, customer_id) PK
   // makes a repeat claim by the same customer a 23505 before any credit can be issued.

@@ -183,11 +183,9 @@ type CardSeed = { code: string; fields: Row; id?: string };
 
 function makeWorld(opts: {
   cards: CardSeed[];
-  orders?: Record<string, number>; // customerId -> numberOfOrders (default 1)
   currency?: string;
 }) {
   const currency = opts.currency || "INR";
-  const orders = opts.orders || {};
   const cards = new Map(opts.cards.map((c, i) => [c.code, { id: c.id || `gid://shopify/Metaobject/${1000 + i}`, fields: c.fields }]));
   const state = {
     creditFails: false,
@@ -233,9 +231,8 @@ function makeWorld(opts: {
       } else if (query.includes("metaobjectUpdate")) {
         state.metaobjectUpdates.push({ id: v.id, fields: v.fields });
         data = { metaobjectUpdate: { metaobject: { id: v.id }, userErrors: [] } };
-      } else if (query.includes("numberOfOrders")) {
-        const cust = customerIdFromGid(v.id)!;
-        data = { shop: { currencyCode: currency }, customer: { numberOfOrders: String(orders[cust] ?? 0) } };
+      } else if (query.includes("CampaignClaimInfo")) {
+        data = { shop: { currencyCode: currency } };
       } else if (query.includes("CardClaimInfo")) {
         const cust = customerIdFromGid(v.id)!;
         data = { shop: { currencyCode: currency }, customer: { email: `${cust}@example.com`, firstName: "Test" } };
@@ -260,7 +257,7 @@ describe("campaign card pool", () => {
 
   it("max_claims=3: A claims, A again rejected, B + C claim, D fully claimed", async () => {
     const code = "1111222233334444";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "3" }) }], orders: { A: 1, B: 1, C: 1, D: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "3" }) }] });
 
     const a1 = await claimCard(admin, "A", code, db);
     expect(a1.ok).toBe(true);
@@ -285,22 +282,23 @@ describe("campaign card pool", () => {
     expect(db.tables.card_claims.every((r) => r.status === "complete")).toBe(true);
   });
 
-  it("zero-order customer is gated before any reservation or credit", async () => {
+  it("a brand-new customer with zero orders can claim (no order gate)", async () => {
     const code = "5555666677778888";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN() }], orders: { Z: 0 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN() }] });
 
+    // No customer/numberOfOrders lookup happens at all — campaign cards are acquisition cards.
     const res = await claimCard(admin, "Z", code, db);
-    expect(res).toMatchObject({ ok: false, error: "ORDER_REQUIRED", http: 403 });
-    if (!res.ok) expect(res.message).toBe("This card unlocks after your first Dropy order.");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.amount).toBe(500);
 
-    expect(state.credits).toHaveLength(0);
-    expect(db.tables.card_claims).toHaveLength(0);
-    expect(db.tables.campaign_cards[0].claim_count).toBe(0);
+    expect(state.credits).toEqual([{ customer: "Z", amount: 500 }]);
+    expect(db.tables.card_claims).toHaveLength(1);
+    expect(db.tables.campaign_cards[0].claim_count).toBe(1);
   });
 
   it("concurrent double-submit by one customer credits exactly once (PK + RPC guard)", async () => {
     const code = "9999000011112222";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "5" }) }], orders: { A: 2 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "5" }) }] });
 
     const [r1, r2] = await Promise.all([claimCard(admin, "A", code, db), claimCard(admin, "A", code, db)]);
 
@@ -322,7 +320,7 @@ describe("campaign card pool", () => {
     // claim_campaign_slot RPC (modeled here as a synchronous, no-await critical section, exactly
     // as a single guarded Postgres UPDATE behaves under row locks) can let just one through.
     const code = "2323232323232323";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "1" }) }], orders: { B: 1, C: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "1" }) }] });
 
     const [b, c] = await Promise.all([claimCard(admin, "B", code, db), claimCard(admin, "C", code, db)]);
 
@@ -339,7 +337,7 @@ describe("campaign card pool", () => {
 
   it("misconfigured card (max_claims=0) is rejected before any DB seed or credit", async () => {
     const code = "4545454545454545";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "0" }) }], orders: { A: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "0" }) }] });
 
     const res = await claimCard(admin, "A", code, db);
     expect(res).toMatchObject({ ok: false, error: "CREDIT_FAILED" });
@@ -349,7 +347,7 @@ describe("campaign card pool", () => {
 
   it("expired card is rejected", async () => {
     const code = "1212121212121212";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ expires_at: "2000-01-01T00:00:00Z" }) }], orders: { A: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ expires_at: "2000-01-01T00:00:00Z" }) }] });
 
     const res = await claimCard(admin, "A", code, db);
     expect(res).toMatchObject({ ok: false, error: "EXPIRED" });
@@ -358,7 +356,7 @@ describe("campaign card pool", () => {
 
   it("credit failure rolls back the slot + reservation, and a retry then succeeds", async () => {
     const code = "3434343434343434";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "2" }) }], orders: { A: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "2" }) }] });
 
     state.creditFails = true;
     const fail = await claimCard(admin, "A", code, db);
@@ -376,7 +374,7 @@ describe("campaign card pool", () => {
 
   it("syncs claim_count back to the metaobject, marking status redeemed at max", async () => {
     const code = "5656565656565656";
-    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "1" }) }], orders: { A: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ max_claims: "1" }) }] });
 
     await claimCard(admin, "A", code, db);
     const sync = state.metaobjectUpdates.at(-1)!;
@@ -398,7 +396,7 @@ describe("legacy single-use card (regression)", () => {
     // legacy card: no card_type, status unused. The fake metaobject status does NOT flip on
     // MarkRedeemed, so the second claim must be stopped by the loyalty_ledger ref_id unique
     // constraint (23505) — the DB-level single-claim guard.
-    const { admin, state } = makeWorld({ cards: [{ code, fields: { status: "unused", credit_amount: "300", batch_id: "B1" } }], orders: { A: 1 } });
+    const { admin, state } = makeWorld({ cards: [{ code, fields: { status: "unused", credit_amount: "300", batch_id: "B1" } }] });
 
     const first = await claimCard(admin, "A", code, db);
     expect(first.ok).toBe(true);
