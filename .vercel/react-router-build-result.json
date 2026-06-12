@@ -1,0 +1,423 @@
+{
+  "buildManifest": {
+    "serverBundles": {
+      "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0": {
+        "id": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+        "file": "build/server/nodejs_eyJydW50aW1lIjoibm9kZWpzIn0/index.js",
+        "config": {
+          "runtime": "nodejs"
+        }
+      }
+    },
+    "routeIdToServerBundleId": {
+      "routes/webhooks.app.scopes_update": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/webhooks.customers.create": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/webhooks.app.uninstalled": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/webhooks.refunds.create": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/webhooks.orders.paid": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/proxy.card.validate": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/proxy.card.redeem": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/proxy.summary": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/proxy.redeem": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/auth.login": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/auth.$": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/_index": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/app.transactions": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/app.customers": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/app.program": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0",
+      "routes/app._index": "nodejs_eyJydW50aW1lIjoibm9kZWpzIn0"
+    },
+    "routes": {
+      "root": {
+        "id": "root",
+        "file": "app/root.tsx",
+        "path": "",
+        "config": {}
+      },
+      "routes/webhooks.app.scopes_update": {
+        "id": "routes/webhooks.app.scopes_update",
+        "parentId": "root",
+        "file": "app/routes/webhooks.app.scopes_update.tsx",
+        "path": "webhooks/app/scopes_update",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/webhooks.customers.create": {
+        "id": "routes/webhooks.customers.create",
+        "parentId": "root",
+        "file": "app/routes/webhooks.customers.create.tsx",
+        "path": "webhooks/customers/create",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/webhooks.app.uninstalled": {
+        "id": "routes/webhooks.app.uninstalled",
+        "parentId": "root",
+        "file": "app/routes/webhooks.app.uninstalled.tsx",
+        "path": "webhooks/app/uninstalled",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/webhooks.refunds.create": {
+        "id": "routes/webhooks.refunds.create",
+        "parentId": "root",
+        "file": "app/routes/webhooks.refunds.create.tsx",
+        "path": "webhooks/refunds/create",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/webhooks.orders.paid": {
+        "id": "routes/webhooks.orders.paid",
+        "parentId": "root",
+        "file": "app/routes/webhooks.orders.paid.tsx",
+        "path": "webhooks/orders/paid",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/proxy.card.validate": {
+        "id": "routes/proxy.card.validate",
+        "parentId": "root",
+        "file": "app/routes/proxy.card.validate.tsx",
+        "path": "proxy/card/validate",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/proxy.card.redeem": {
+        "id": "routes/proxy.card.redeem",
+        "parentId": "root",
+        "file": "app/routes/proxy.card.redeem.tsx",
+        "path": "proxy/card/redeem",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/proxy.summary": {
+        "id": "routes/proxy.summary",
+        "parentId": "root",
+        "file": "app/routes/proxy.summary.tsx",
+        "path": "proxy/summary",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/proxy.redeem": {
+        "id": "routes/proxy.redeem",
+        "parentId": "root",
+        "file": "app/routes/proxy.redeem.tsx",
+        "path": "proxy/redeem",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/auth.login": {
+        "id": "routes/auth.login",
+        "parentId": "root",
+        "file": "app/routes/auth.login/route.tsx",
+        "path": "auth/login",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/auth.$": {
+        "id": "routes/auth.$",
+        "parentId": "root",
+        "file": "app/routes/auth.$.tsx",
+        "path": "auth/*",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/_index": {
+        "id": "routes/_index",
+        "parentId": "root",
+        "file": "app/routes/_index/route.tsx",
+        "index": true,
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/app": {
+        "id": "routes/app",
+        "parentId": "root",
+        "file": "app/routes/app.tsx",
+        "path": "app",
+        "config": {}
+      },
+      "routes/app.transactions": {
+        "id": "routes/app.transactions",
+        "parentId": "routes/app",
+        "file": "app/routes/app.transactions.tsx",
+        "path": "transactions",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/app.customers": {
+        "id": "routes/app.customers",
+        "parentId": "routes/app",
+        "file": "app/routes/app.customers.tsx",
+        "path": "customers",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/app.program": {
+        "id": "routes/app.program",
+        "parentId": "routes/app",
+        "file": "app/routes/app.program.tsx",
+        "path": "program",
+        "config": {
+          "runtime": "nodejs"
+        }
+      },
+      "routes/app._index": {
+        "id": "routes/app._index",
+        "parentId": "routes/app",
+        "file": "app/routes/app._index.tsx",
+        "index": true,
+        "config": {
+          "runtime": "nodejs"
+        }
+      }
+    }
+  },
+  "reactRouterConfig": {
+    "appDirectory": "C:/Project/dropy-rewards/app",
+    "basename": "/",
+    "buildDirectory": "C:/Project/dropy-rewards/build",
+    "future": {
+      "unstable_optimizeDeps": false,
+      "v8_passThroughRequests": false,
+      "v8_trailingSlashAwareDataRequests": false,
+      "unstable_previewServerPrerendering": false,
+      "v8_middleware": false,
+      "v8_splitRouteModules": false,
+      "v8_viteEnvironmentApi": false
+    },
+    "routes": {
+      "root": {
+        "id": "root",
+        "file": "root.tsx",
+        "path": ""
+      },
+      "routes/webhooks.app.scopes_update": {
+        "id": "routes/webhooks.app.scopes_update",
+        "parentId": "root",
+        "file": "routes/webhooks.app.scopes_update.tsx",
+        "path": "webhooks/app/scopes_update"
+      },
+      "routes/webhooks.customers.create": {
+        "id": "routes/webhooks.customers.create",
+        "parentId": "root",
+        "file": "routes/webhooks.customers.create.tsx",
+        "path": "webhooks/customers/create"
+      },
+      "routes/webhooks.app.uninstalled": {
+        "id": "routes/webhooks.app.uninstalled",
+        "parentId": "root",
+        "file": "routes/webhooks.app.uninstalled.tsx",
+        "path": "webhooks/app/uninstalled"
+      },
+      "routes/webhooks.refunds.create": {
+        "id": "routes/webhooks.refunds.create",
+        "parentId": "root",
+        "file": "routes/webhooks.refunds.create.tsx",
+        "path": "webhooks/refunds/create"
+      },
+      "routes/webhooks.orders.paid": {
+        "id": "routes/webhooks.orders.paid",
+        "parentId": "root",
+        "file": "routes/webhooks.orders.paid.tsx",
+        "path": "webhooks/orders/paid"
+      },
+      "routes/proxy.card.validate": {
+        "id": "routes/proxy.card.validate",
+        "parentId": "root",
+        "file": "routes/proxy.card.validate.tsx",
+        "path": "proxy/card/validate"
+      },
+      "routes/proxy.card.redeem": {
+        "id": "routes/proxy.card.redeem",
+        "parentId": "root",
+        "file": "routes/proxy.card.redeem.tsx",
+        "path": "proxy/card/redeem"
+      },
+      "routes/proxy.summary": {
+        "id": "routes/proxy.summary",
+        "parentId": "root",
+        "file": "routes/proxy.summary.tsx",
+        "path": "proxy/summary"
+      },
+      "routes/proxy.redeem": {
+        "id": "routes/proxy.redeem",
+        "parentId": "root",
+        "file": "routes/proxy.redeem.tsx",
+        "path": "proxy/redeem"
+      },
+      "routes/auth.login": {
+        "id": "routes/auth.login",
+        "parentId": "root",
+        "file": "routes/auth.login/route.tsx",
+        "path": "auth/login"
+      },
+      "routes/auth.$": {
+        "id": "routes/auth.$",
+        "parentId": "root",
+        "file": "routes/auth.$.tsx",
+        "path": "auth/*"
+      },
+      "routes/_index": {
+        "id": "routes/_index",
+        "parentId": "root",
+        "file": "routes/_index/route.tsx",
+        "index": true
+      },
+      "routes/app": {
+        "id": "routes/app",
+        "parentId": "root",
+        "file": "routes/app.tsx",
+        "path": "app"
+      },
+      "routes/app.transactions": {
+        "id": "routes/app.transactions",
+        "parentId": "routes/app",
+        "file": "routes/app.transactions.tsx",
+        "path": "transactions"
+      },
+      "routes/app.customers": {
+        "id": "routes/app.customers",
+        "parentId": "routes/app",
+        "file": "routes/app.customers.tsx",
+        "path": "customers"
+      },
+      "routes/app.program": {
+        "id": "routes/app.program",
+        "parentId": "routes/app",
+        "file": "routes/app.program.tsx",
+        "path": "program"
+      },
+      "routes/app._index": {
+        "id": "routes/app._index",
+        "parentId": "routes/app",
+        "file": "routes/app._index.tsx",
+        "index": true
+      }
+    },
+    "routeDiscovery": {
+      "mode": "lazy",
+      "manifestPath": "/__manifest"
+    },
+    "serverBuildFile": "index.js",
+    "serverModuleFormat": "esm",
+    "ssr": true,
+    "subResourceIntegrity": false,
+    "allowedActionOrigins": false,
+    "unstable_routeConfig": [
+      {
+        "id": "root",
+        "path": "",
+        "file": "root.tsx",
+        "children": [
+          {
+            "id": "routes/webhooks.app.scopes_update",
+            "file": "routes/webhooks.app.scopes_update.tsx",
+            "path": "webhooks/app/scopes_update"
+          },
+          {
+            "id": "routes/webhooks.customers.create",
+            "file": "routes/webhooks.customers.create.tsx",
+            "path": "webhooks/customers/create"
+          },
+          {
+            "id": "routes/webhooks.app.uninstalled",
+            "file": "routes/webhooks.app.uninstalled.tsx",
+            "path": "webhooks/app/uninstalled"
+          },
+          {
+            "id": "routes/webhooks.refunds.create",
+            "file": "routes/webhooks.refunds.create.tsx",
+            "path": "webhooks/refunds/create"
+          },
+          {
+            "id": "routes/webhooks.orders.paid",
+            "file": "routes/webhooks.orders.paid.tsx",
+            "path": "webhooks/orders/paid"
+          },
+          {
+            "id": "routes/proxy.card.validate",
+            "file": "routes/proxy.card.validate.tsx",
+            "path": "proxy/card/validate"
+          },
+          {
+            "id": "routes/proxy.card.redeem",
+            "file": "routes/proxy.card.redeem.tsx",
+            "path": "proxy/card/redeem"
+          },
+          {
+            "id": "routes/proxy.summary",
+            "file": "routes/proxy.summary.tsx",
+            "path": "proxy/summary"
+          },
+          {
+            "id": "routes/proxy.redeem",
+            "file": "routes/proxy.redeem.tsx",
+            "path": "proxy/redeem"
+          },
+          {
+            "id": "routes/auth.login",
+            "file": "routes/auth.login/route.tsx",
+            "path": "auth/login"
+          },
+          {
+            "id": "routes/auth.$",
+            "file": "routes/auth.$.tsx",
+            "path": "auth/*"
+          },
+          {
+            "id": "routes/_index",
+            "file": "routes/_index/route.tsx",
+            "index": true
+          },
+          {
+            "id": "routes/app",
+            "file": "routes/app.tsx",
+            "path": "app",
+            "children": [
+              {
+                "id": "routes/app.transactions",
+                "file": "routes/app.transactions.tsx",
+                "path": "transactions"
+              },
+              {
+                "id": "routes/app.customers",
+                "file": "routes/app.customers.tsx",
+                "path": "customers"
+              },
+              {
+                "id": "routes/app.program",
+                "file": "routes/app.program.tsx",
+                "path": "program"
+              },
+              {
+                "id": "routes/app._index",
+                "file": "routes/app._index.tsx",
+                "index": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "viteConfig": {
+    "build": {
+      "assetsDir": "assets"
+    }
+  }
+}

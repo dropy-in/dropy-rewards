@@ -143,7 +143,7 @@
           '<div class="dr-prog"><div><b>' + esc(c.name) + "</b><br>" +
           (c.code
             ? '<span class="dr-code">' + esc(c.code) + "</span>"
-            : '<span class="dr-sub">Store credit — auto-applies at checkout</span>') +
+            : '<span class="dr-sub">Store credit — select “Apply store credit” at checkout</span>') +
           "</div>" +
           (c.code
             ? '<button class="dr-btn dr-copy" data-code="' + esc(c.code) + '">Copy</button>'
