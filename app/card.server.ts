@@ -17,7 +17,7 @@ type CardFields = {
   id: string; handle: string; card_number?: string;
   status?: string; credit_amount?: string; batch_id?: string;
   // campaign fields (created by dropy-cards-admin)
-  card_type?: string; max_claims?: string; claim_count?: string; expires_at?: string;
+  card_type?: string; max_claims?: string; claim_count?: string; expires_at?: string; credit_valid_days?: string;
 };
 
 async function gql(admin: any, query: string, variables: Record<string, any> = {}) {
@@ -179,18 +179,24 @@ async function claimCampaignCard(
   if (!maxClaims || maxClaims <= 0)
     return { ok: false, error: "CREDIT_FAILED", message: "Card is misconfigured", http: 500 };
 
+  // (b) CLAIM WINDOW — the metaobject's expires_at is the claim deadline (null/absent = no
+  // expiry). Reject BEFORE any seed/reservation so an expired card writes no rows.
+  const claimExpiresAt = card.expires_at || null;
+  if (claimExpiresAt && new Date(claimExpiresAt).getTime() <= Date.now())
+    return { ok: false, error: "EXPIRED", status: "expired", message: "This card has expired.", http: 409 };
+
   // (a) Lazy registration — seed the pool row from the metaobject on first sighting. Uses
   // INSERT … ON CONFLICT DO NOTHING (ignoreDuplicates) so a concurrent first-claim, or any
-  // later claim, never clobbers the authoritative claim_count. amount / max_claims are locked
-  // in at first claim — the DB row, not the metaobject, is the source of truth for the pool
-  // from here on (later metaobject edits to amount/max_claims do not retroactively apply).
+  // later claim, never clobbers the authoritative claim_count. amount / max_claims / expires_at
+  // are locked in at first claim — the DB row, not the metaobject, is the source of truth for
+  // the pool from here on (later metaobject edits do not retroactively apply).
   const seed = await db.from("campaign_cards").upsert(
     {
       card_number: code,
       metaobject_id: card.id,
       amount,
       max_claims: maxClaims,
-      expires_at: card.expires_at || null,
+      expires_at: claimExpiresAt,
       status: "active",
     },
     { onConflict: "card_number", ignoreDuplicates: true },
@@ -205,11 +211,9 @@ async function claimCampaignCard(
   if (ccErr || !cc)
     return { ok: false, error: "INTERNAL_ERROR", message: ccErr?.message || "Card row missing", http: 500 };
 
-  // (b) active + not expired
+  // active (an admin can disable a card by flipping the DB status)
   if (cc.status !== "active")
     return { ok: false, error: "NOT_REDEEMABLE", status: cc.status, message: "This card is no longer active.", http: 409 };
-  if (cc.expires_at && new Date(cc.expires_at).getTime() <= Date.now())
-    return { ok: false, error: "EXPIRED", status: "expired", message: "This card has expired.", http: 409 };
 
   // (c) No order gate: campaign cards are acquisition cards aimed at brand-new customers (0
   // orders by design). We only fetch the shop currency needed for the credit below.
@@ -244,7 +248,13 @@ async function claimCampaignCard(
   }
 
   // (f) CREDIT — only now that a slot is held. On failure, give the slot back and drop the
-  // reservation so the customer can retry.
+  // reservation so the customer can retry. The issued store credit itself expires per-customer
+  // after credit_valid_days from the metaobject (default 60 if absent/invalid).
+  const creditValidDays = (() => {
+    const d = parseInt(card.credit_valid_days || "", 10);
+    return Number.isFinite(d) && d > 0 ? d : 60;
+  })();
+  const creditExpiresAt = new Date(Date.now() + creditValidDays * 86_400_000).toISOString();
   let txn: any;
   try {
     const data = await gql(admin, `#graphql
@@ -254,7 +264,7 @@ async function claimCampaignCard(
           userErrors { field message code }
         }
       }`,
-      { id: customerGid, creditInput: { creditAmount: { amount: String(cc.amount), currencyCode: currency } } }
+      { id: customerGid, creditInput: { creditAmount: { amount: String(cc.amount), currencyCode: currency }, expiresAt: creditExpiresAt } }
     );
     const ue = data.storeCreditAccountCredit.userErrors;
     if (ue?.length) throw new Error(JSON.stringify(ue));

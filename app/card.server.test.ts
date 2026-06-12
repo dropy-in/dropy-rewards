@@ -189,7 +189,7 @@ function makeWorld(opts: {
   const cards = new Map(opts.cards.map((c, i) => [c.code, { id: c.id || `gid://shopify/Metaobject/${1000 + i}`, fields: c.fields }]));
   const state = {
     creditFails: false,
-    credits: [] as { customer: string; amount: number }[],
+    credits: [] as { customer: string; amount: number; expiresAt: string | null }[],
     balance: {} as Record<string, number>,
     metaobjectUpdates: [] as { id: string; fields: Row[] }[],
   };
@@ -216,7 +216,7 @@ function makeWorld(opts: {
         } else {
           const cust = customerIdFromGid(v.id)!;
           const amt = Number(v.creditInput.creditAmount.amount);
-          state.credits.push({ customer: cust, amount: amt });
+          state.credits.push({ customer: cust, amount: amt, expiresAt: v.creditInput.expiresAt ?? null });
           state.balance[cust] = (state.balance[cust] || 0) + amt;
           data = {
             storeCreditAccountCredit: {
@@ -291,7 +291,8 @@ describe("campaign card pool", () => {
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.amount).toBe(500);
 
-    expect(state.credits).toEqual([{ customer: "Z", amount: 500 }]);
+    expect(state.credits).toHaveLength(1);
+    expect(state.credits[0]).toMatchObject({ customer: "Z", amount: 500 });
     expect(db.tables.card_claims).toHaveLength(1);
     expect(db.tables.campaign_cards[0].claim_count).toBe(1);
   });
@@ -345,13 +346,46 @@ describe("campaign card pool", () => {
     expect(db.tables.campaign_cards).toHaveLength(0);
   });
 
-  it("expired card is rejected", async () => {
+  it("expired card (past claim window) is rejected and writes no rows", async () => {
     const code = "1212121212121212";
     const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ expires_at: "2000-01-01T00:00:00Z" }) }] });
 
     const res = await claimCard(admin, "A", code, db);
-    expect(res).toMatchObject({ ok: false, error: "EXPIRED" });
+    expect(res).toMatchObject({ ok: false, error: "EXPIRED", http: 409 });
+    if (!res.ok) expect(res.message).toBe("This card has expired.");
+
+    // rejected BEFORE any seed/reservation — no rows written
     expect(state.credits).toHaveLength(0);
+    expect(db.tables.campaign_cards).toHaveLength(0);
+    expect(db.tables.card_claims).toHaveLength(0);
+  });
+
+  it("credit expiry: storeCreditAccountCredit receives expiresAt = now + credit_valid_days", async () => {
+    const code = "6767676767676767";
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN({ credit_valid_days: "30" }) }] });
+
+    const before = Date.now();
+    const res = await claimCard(admin, "A", code, db);
+    expect(res.ok).toBe(true);
+
+    const credit = state.credits[0];
+    expect(credit.expiresAt).toBeTruthy();
+    const got = new Date(credit.expiresAt!).getTime();
+    // ~30 days out; generous window absorbs the wall-clock elapsed during the call
+    expect(got).toBeGreaterThanOrEqual(before + 30 * 86_400_000 - 5_000);
+    expect(got).toBeLessThanOrEqual(Date.now() + 30 * 86_400_000 + 5_000);
+  });
+
+  it("credit expiry: defaults to 60 days when credit_valid_days is absent", async () => {
+    const code = "6868686868686868";
+    const { admin, state } = makeWorld({ cards: [{ code, fields: CAMPAIGN() }] }); // no credit_valid_days
+
+    const before = Date.now();
+    await claimCard(admin, "A", code, db);
+
+    const got = new Date(state.credits[0].expiresAt!).getTime();
+    expect(got).toBeGreaterThanOrEqual(before + 60 * 86_400_000 - 5_000);
+    expect(got).toBeLessThanOrEqual(Date.now() + 60 * 86_400_000 + 5_000);
   });
 
   it("credit failure rolls back the slot + reservation, and a retry then succeeds", async () => {
@@ -406,6 +440,8 @@ describe("legacy single-use card (regression)", () => {
     expect(second).toMatchObject({ ok: false, error: "NOT_REDEEMABLE", status: "redeemed", http: 409 });
 
     expect(state.credits).toHaveLength(1);
+    // legacy credit carries no per-customer expiry — that's campaign-only
+    expect(state.credits[0].expiresAt).toBeNull();
     expect(db.tables.loyalty_ledger).toHaveLength(1);
   });
 
