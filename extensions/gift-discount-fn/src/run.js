@@ -1,4 +1,3 @@
-// @ts-check
 // Tiered, cumulative free-gift product discount.
 //
 // Replaces the two automatic Buy-X-Get-Y gifts (FREEGIFT2499 / FREEGIFT3999). Shopify only ever
@@ -12,20 +11,25 @@
 // Gift lines are matched by PRODUCT HANDLE (the same handles the storefront popup adds), so no
 // variant-id resolution and no read_products scope are needed; we target the actual cart line.
 
-const EMPTY = { discountApplicationStrategy: "FIRST", discounts: [] };
+/**
+ * @typedef {import("../generated/api").RunInput} RunInput
+ * @typedef {import("../generated/api").FunctionRunResult} FunctionRunResult
+ */
+
+const EMPTY_DISCOUNT = { discountApplicationStrategy: "FIRST", discounts: [] };
 
 /**
- * @param {*} input
- * @returns {*}
+ * @param {RunInput} input
+ * @returns {FunctionRunResult}
  */
 export function run(input) {
   const raw = input && input.shop && input.shop.metafield && input.shop.metafield.jsonValue;
   // Accept either { tiers: [...] } or a bare [...] for forward-compat.
   const tiers = raw && Array.isArray(raw.tiers) ? raw.tiers : Array.isArray(raw) ? raw : [];
-  if (!tiers.length) return EMPTY;
+  if (!tiers.length) return EMPTY_DISCOUNT;
 
   const lines = (input.cart && input.cart.lines) || [];
-  if (!lines.length) return EMPTY;
+  if (!lines.length) return EMPTY_DISCOUNT;
 
   const handleOf = (line) => {
     const m = line.merchandise;
@@ -54,7 +58,7 @@ export function run(input) {
       for (const h of t.handles || []) unlockedHandles.add(h);
     }
   }
-  if (!unlockedHandles.size) return EMPTY;
+  if (!unlockedHandles.size) return EMPTY_DISCOUNT;
 
   // Zero ONE unit of each cart line that is an unlocked gift. Never touch a non-gift line.
   const targets = [];
@@ -64,7 +68,7 @@ export function run(input) {
       targets.push({ cartLine: { id: line.id, quantity: 1 } });
     }
   }
-  if (!targets.length) return EMPTY;
+  if (!targets.length) return EMPTY_DISCOUNT;
 
   return {
     discountApplicationStrategy: "FIRST",
