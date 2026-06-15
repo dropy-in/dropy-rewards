@@ -1,5 +1,10 @@
 node_modules
 
+# Local pnpm lockfile — pnpm is used locally for `shopify app deploy`, but Vercel must
+# keep building the server with npm via the committed package-lock.json. Ignoring this
+# prevents an accidental commit from flipping Vercel's package-manager detection.
+pnpm-lock.yaml
+
 # macOS
 .DS_Store
 
