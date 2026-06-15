@@ -195,7 +195,7 @@
   }
 })();
 
-/* ───────── Dropy Free Gift Popup (config-driven port of theme popup) ───────── */
+/* ───────── Dropy Free Gift Popup — multi-tier cumulative (config-driven) ───────── */
 (function () {
   function gxhr(method, url, body, cb) {
     var x = new XMLHttpRequest();
@@ -213,151 +213,200 @@
   }
 
   gxhr("GET", "/apps/rewards/gift/config", null, function (err, cfg) {
-    if (err || !cfg || !cfg.enabled || !cfg.handles || !cfg.handles.length) return;
-    initGift(cfg.threshold || 249900, cfg.handles);
+    if (err || !cfg || !cfg.enabled) return;
+    var tiers = cfg.tiers;
+    // Back-compat: an older server may only return { threshold, handles }. Synthesize one tier.
+    if (!tiers || !tiers.length) {
+      if (cfg.handles && cfg.handles.length) {
+        tiers = [{ threshold: cfg.threshold || 249900, handles: cfg.handles, label: "free gift" }];
+      }
+    }
+    tiers = (tiers || []).filter(function (t) { return t && t.handles && t.handles.length; });
+    if (!tiers.length) return;
+    initGifts(tiers);
   });
 
-  function initGift(GIFT_THRESHOLD, GIFT_HANDLES) {
-    var giftVariantIds = [];
-
-    var host = document.createElement("div");
-    host.innerHTML =
-      '<div class="dropy-gift-overlay" id="dropyGiftOverlay">' +
-      '<div class="dropy-gift-modal">' +
-      '<div class="dropy-gift-header">' +
-      '<button class="dropy-gift-close" id="dropyGiftClose">&times;</button>' +
-      "<h3>🎁 Choose Your <span>FREE Gift!</span></h3>" +
-      "<p>Pick 1 CeraVe travel-size product — on us!</p>" +
-      "</div>" +
-      '<div class="dropy-gift-body" id="dropyGiftBody"></div>' +
-      '<div class="dropy-gift-footer">1 free CeraVe travel-size included with orders above ₹' +
-      Math.round(GIFT_THRESHOLD / 100).toLocaleString("en-IN") +
-      "</div>" +
-      "</div>" +
-      "</div>";
-    document.body.appendChild(host.firstChild);
-
-    var overlay = document.getElementById("dropyGiftOverlay");
-    var bodyEl = document.getElementById("dropyGiftBody");
-    var closeBtn = document.getElementById("dropyGiftClose");
-    if (!overlay || !bodyEl) return;
-
-    var lastPopupClose = 0;
-    var COOLDOWN = 60000;
-    var giftAlreadyInCart = false;
+  function initGifts(tierConfigs) {
     var lastCartTotal = -1;
-    var popupShownForThisTotal = false;
-    var giftManuallyRemoved = sessionStorage.getItem("dropyGiftRemoved") === "true";
+    var readyCount = 0;
+    var allReady = false;
 
-    function showPopup() {
-      overlay.classList.add("dropy-gift-show");
-      document.body.style.overflow = "hidden";
-      popupShownForThisTotal = true;
-      sessionStorage.setItem("dropyGiftPopupSeen", "true");
-    }
-    function hidePopup() {
-      overlay.classList.remove("dropy-gift-show");
-      document.body.style.overflow = "";
-      lastPopupClose = Date.now();
-    }
-    closeBtn.addEventListener("click", function (e) {
-      e.preventDefault();
-      hidePopup();
-    });
-    overlay.addEventListener("click", function (e) {
-      if (e.target === overlay) hidePopup();
-    });
+    // Each tier owns its overlay, its variant ids, and its own sessionStorage keys so they are
+    // tracked independently. The cart poller below evaluates every tier on each cart change.
+    function makeTier(cfg) {
+      var threshold = cfg.threshold || 0;
+      var handles = cfg.handles || [];
+      var label = cfg.label || "free gift";
+      var rupees = Math.round(threshold / 100).toLocaleString("en-IN");
 
-    function loadProducts(callback) {
-      var loaded = 0,
-        products = [];
-      GIFT_HANDLES.forEach(function (handle, i) {
-        var x = new XMLHttpRequest();
-        x.open("GET", "/products/" + handle + ".js", true);
-        x.onload = function () {
-          if (x.status === 200) {
-            try {
-              var p = JSON.parse(x.responseText);
-              products[i] = p;
-              giftVariantIds.push(p.variants[0].id);
-            } catch (e) {}
-          }
-          loaded++;
-          if (loaded === GIFT_HANDLES.length) callback(products);
-        };
-        x.onerror = function () {
-          loaded++;
-          if (loaded === GIFT_HANDLES.length) callback(products);
-        };
-        x.send();
-      });
-    }
+      var host = document.createElement("div");
+      host.innerHTML =
+        '<div class="dropy-gift-overlay">' +
+        '<div class="dropy-gift-modal">' +
+        '<div class="dropy-gift-header">' +
+        '<button class="dropy-gift-close">&times;</button>' +
+        "<h3>🎁 Choose Your <span>FREE Gift!</span></h3>" +
+        "<p>Pick 1 free gift — on us!</p>" +
+        "</div>" +
+        '<div class="dropy-gift-body"></div>' +
+        '<div class="dropy-gift-footer">1 free ' + label + " included with orders above ₹" + rupees +
+        "</div>" +
+        "</div>" +
+        "</div>";
+      var overlay = host.firstChild;
+      document.body.appendChild(overlay);
+      var bodyEl = overlay.querySelector(".dropy-gift-body");
+      var closeBtn = overlay.querySelector(".dropy-gift-close");
 
-    function renderProducts(products) {
-      var html = "";
-      products.forEach(function (p) {
-        if (!p) return;
-        var v = p.variants[0];
-        var img = p.images[0] ? p.images[0].replace(/(\.\w+)\?/, "_200x200$1?") : "";
-        var originalPrice = (v.compare_at_price || v.price) / 100;
-        html += '<div class="dropy-gift-card" data-variant-id="' + v.id + '">';
-        html += '<img class="dropy-gift-img" src="' + img + '" alt="' + p.title + '">';
-        html += '<div class="dropy-gift-info">';
-        html += '<p class="dropy-gift-name">' + p.title + "</p>";
-        html +=
-          '<p class="dropy-gift-price"><s>₹' + originalPrice.toLocaleString("en-IN") + "</s><span>FREE</span></p>";
-        html += "</div>";
-        html += '<button class="dropy-gift-btn" data-variant-id="' + v.id + '">Add</button>';
-        html += "</div>";
-      });
-      bodyEl.innerHTML = html;
+      var tier = {
+        threshold: threshold,
+        handles: handles,
+        label: label,
+        // per-tier sessionStorage keys (replace the old global keys)
+        keyAdded: "dropyGiftWasAdded_" + threshold,
+        keyRemoved: "dropyGiftRemoved_" + threshold,
+        keySeen: "dropyGiftPopupSeen_" + threshold,
+        variantIds: [],
+        giftInCart: false,
+        ready: false,
+        overlay: overlay,
+        showPopup: showPopup,
+        hidePopup: hidePopup,
+      };
 
-      bodyEl.querySelectorAll(".dropy-gift-btn").forEach(function (btn) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          var variantId = btn.getAttribute("data-variant-id");
-          var card = btn.closest(".dropy-gift-card");
-          card.classList.add("dropy-gift-adding");
-          btn.textContent = "Adding...";
-          gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1 }), function (err) {
-            if (err) {
-              btn.textContent = "Retry";
-              card.classList.remove("dropy-gift-adding");
-              return;
+      function showPopup() {
+        overlay.classList.add("dropy-gift-show");
+        document.body.style.overflow = "hidden";
+        sessionStorage.setItem(tier.keySeen, "true");
+      }
+      function hidePopup() {
+        overlay.classList.remove("dropy-gift-show");
+        document.body.style.overflow = "";
+      }
+      closeBtn.addEventListener("click", function (e) { e.preventDefault(); hidePopup(); });
+      overlay.addEventListener("click", function (e) { if (e.target === overlay) hidePopup(); });
+
+      function loadProducts(callback) {
+        var loaded = 0, products = [];
+        if (!handles.length) { callback(products); return; }
+        handles.forEach(function (handle, i) {
+          var x = new XMLHttpRequest();
+          x.open("GET", "/products/" + handle + ".js", true);
+          x.onload = function () {
+            if (x.status === 200) {
+              try {
+                var p = JSON.parse(x.responseText);
+                products[i] = p;
+                tier.variantIds.push(p.variants[0].id);
+              } catch (e) {}
             }
-            btn.textContent = "Added ✓";
-            btn.classList.add("dropy-gift-btn-done");
-            card.classList.remove("dropy-gift-adding");
-            card.classList.add("dropy-gift-added");
-            giftAlreadyInCart = true;
-            sessionStorage.setItem("dropyGiftWasAdded", "true");
-            bodyEl.querySelectorAll(".dropy-gift-btn").forEach(function (b) {
-              if (b !== btn) {
-                b.disabled = true;
-                b.style.opacity = "0.4";
+            loaded++;
+            if (loaded === handles.length) callback(products);
+          };
+          x.onerror = function () {
+            loaded++;
+            if (loaded === handles.length) callback(products);
+          };
+          x.send();
+        });
+      }
+
+      function renderProducts(products) {
+        var html = "";
+        products.forEach(function (p) {
+          if (!p) return;
+          var v = p.variants[0];
+          var img = p.images[0] ? p.images[0].replace(/(\.\w+)\?/, "_200x200$1?") : "";
+          var originalPrice = (v.compare_at_price || v.price) / 100;
+          html += '<div class="dropy-gift-card" data-variant-id="' + v.id + '">';
+          html += '<img class="dropy-gift-img" src="' + img + '" alt="' + p.title + '">';
+          html += '<div class="dropy-gift-info">';
+          html += '<p class="dropy-gift-name">' + p.title + "</p>";
+          html +=
+            '<p class="dropy-gift-price"><s>₹' + originalPrice.toLocaleString("en-IN") + "</s><span>FREE</span></p>";
+          html += "</div>";
+          html += '<button class="dropy-gift-btn" data-variant-id="' + v.id + '">Add</button>';
+          html += "</div>";
+        });
+        bodyEl.innerHTML = html;
+
+        bodyEl.querySelectorAll(".dropy-gift-btn").forEach(function (btn) {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var variantId = btn.getAttribute("data-variant-id");
+            var card = btn.closest(".dropy-gift-card");
+            card.classList.add("dropy-gift-adding");
+            btn.textContent = "Adding...";
+            gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1 }), function (err) {
+              if (err) {
+                btn.textContent = "Retry";
+                card.classList.remove("dropy-gift-adding");
+                return;
               }
+              btn.textContent = "Added ✓";
+              btn.classList.add("dropy-gift-btn-done");
+              card.classList.remove("dropy-gift-adding");
+              card.classList.add("dropy-gift-added");
+              tier.giftInCart = true;
+              sessionStorage.setItem(tier.keyAdded, "true");
+              bodyEl.querySelectorAll(".dropy-gift-btn").forEach(function (b) {
+                if (b !== btn) {
+                  b.disabled = true;
+                  b.style.opacity = "0.4";
+                }
+              });
+              removeClaimButtons();
+              setTimeout(function () {
+                hidePopup();
+                window.location.reload();
+              }, 600);
             });
-            removeClaimButtons();
-            setTimeout(function () {
-              hidePopup();
-              window.location.reload();
-            }, 600);
           });
         });
-      });
-      bodyEl.querySelectorAll(".dropy-gift-card").forEach(function (card) {
-        card.addEventListener("click", function () {
-          var btn = card.querySelector(".dropy-gift-btn");
-          if (btn && !btn.classList.contains("dropy-gift-btn-done") && !btn.disabled) btn.click();
+        bodyEl.querySelectorAll(".dropy-gift-card").forEach(function (card) {
+          card.addEventListener("click", function () {
+            var btn = card.querySelector(".dropy-gift-btn");
+            if (btn && !btn.classList.contains("dropy-gift-btn-done") && !btn.disabled) btn.click();
+          });
         });
+      }
+
+      loadProducts(function (products) {
+        renderProducts(products);
+        tier.ready = true;
+        onTierReady();
       });
+
+      return tier;
     }
 
-    function addClaimButton() {
-      document.querySelectorAll(".dropy-gift-claim").forEach(function (el) {
-        el.remove();
+    function onTierReady() {
+      readyCount++;
+      if (readyCount === tierConfigs.length) {
+        allReady = true;
+        setTimeout(pollCart, 300);
+      }
+    }
+
+    var tiers = tierConfigs.map(function (cfg) { return makeTier(cfg); });
+
+    function allGiftVariantIds() {
+      var ids = [];
+      tiers.forEach(function (t) {
+        for (var i = 0; i < t.variantIds.length; i++) ids.push(t.variantIds[i]);
       });
-      if (giftAlreadyInCart) return;
+      return ids;
+    }
+
+    function anyPopupOpen() {
+      return tiers.some(function (t) { return t.overlay.classList.contains("dropy-gift-show"); });
+    }
+
+    function removeClaimButtons() {
+      document.querySelectorAll(".dropy-gift-claim").forEach(function (el) { el.remove(); });
+    }
+    function addClaimButton(tier) {
+      removeClaimButtons(); // single claim button, pointed at the given tier
       var targets = document.querySelectorAll(".cart-drawer__free-shipping, .main-cart__free-shipping");
       targets.forEach(function (target) {
         if (target.querySelector(".dropy-gift-claim")) return;
@@ -367,79 +416,86 @@
         btn.addEventListener("click", function (e) {
           e.preventDefault();
           e.stopPropagation();
-          showPopup();
+          tier.showPopup();
         });
         target.appendChild(btn);
       });
     }
-    function removeClaimButtons() {
-      document.querySelectorAll(".dropy-gift-claim").forEach(function (el) {
-        el.remove();
-      });
+
+    function highestOf(list) {
+      var top = list[0];
+      list.forEach(function (t) { if (t.threshold > top.threshold) top = t; });
+      return top;
     }
 
     function pollCart() {
+      if (!allReady) return;
       var x = new XMLHttpRequest();
       x.open("GET", "/cart.js?_=" + Date.now(), true);
       x.onload = function () {
         if (x.status !== 200) return;
-        try {
-          var c = JSON.parse(x.responseText);
-        } catch (e) {
-          return;
-        }
+        var c;
+        try { c = JSON.parse(x.responseText); } catch (e) { return; }
         var total = c.total_price || 0;
+        var items = c.items || [];
+        var allIds = allGiftVariantIds();
 
-        giftAlreadyInCart = false;
-        if (c.items) {
-          for (var i = 0; i < c.items.length; i++) {
-            if (giftVariantIds.indexOf(c.items[i].variant_id) !== -1) {
-              giftAlreadyInCart = true;
-              break;
-            }
-          }
-        }
-
+        // totalWithoutGift subtracts EVERY tier's gift variants, not just one tier's.
         var totalWithoutGift = total;
-        if (c.items) {
-          c.items.forEach(function (item) {
-            if (giftVariantIds.indexOf(item.variant_id) !== -1) totalWithoutGift -= item.final_line_price;
-          });
-        }
+        items.forEach(function (item) {
+          if (allIds.indexOf(item.variant_id) !== -1) totalWithoutGift -= item.final_line_price;
+        });
 
-        if (total !== lastCartTotal) {
-          if (total > lastCartTotal && !giftAlreadyInCart && totalWithoutGift >= GIFT_THRESHOLD) {
-            giftManuallyRemoved = false;
-            sessionStorage.removeItem("dropyGiftRemoved");
+        // each tier's "gift in cart" check uses that tier's own variant ids
+        tiers.forEach(function (t) {
+          t.giftInCart = false;
+          for (var i = 0; i < items.length; i++) {
+            if (t.variantIds.indexOf(items[i].variant_id) !== -1) { t.giftInCart = true; break; }
           }
-          lastCartTotal = total;
-          popupShownForThisTotal = false;
-        }
+        });
 
-        if (!giftAlreadyInCart && sessionStorage.getItem("dropyGiftWasAdded") === "true") {
-          giftManuallyRemoved = true;
-          sessionStorage.setItem("dropyGiftRemoved", "true");
-        }
+        var totalChanged = total !== lastCartTotal;
+        var increased = total > lastCartTotal;
+        if (totalChanged) lastCartTotal = total;
 
-        if (totalWithoutGift >= GIFT_THRESHOLD && !giftAlreadyInCart) {
-          setTimeout(addClaimButton, 300);
-          if (sessionStorage.getItem("dropyGiftPopupSeen") !== "true" && !giftManuallyRemoved) {
-            showPopup();
+        tiers.forEach(function (t) {
+          // crossing this tier's threshold (going up) re-arms an earlier manual removal
+          if (totalChanged && increased && !t.giftInCart && totalWithoutGift >= t.threshold) {
+            sessionStorage.removeItem(t.keyRemoved);
+          }
+          // a gift that was added and then disappeared = user removed it; don't nag
+          if (!t.giftInCart && sessionStorage.getItem(t.keyAdded) === "true") {
+            sessionStorage.setItem(t.keyRemoved, "true");
+          }
+          // dropped back below this tier → re-arm its popup for the next crossing
+          if (totalWithoutGift < t.threshold) {
+            sessionStorage.removeItem(t.keySeen);
+          }
+        });
+
+        // cumulative: every unlocked tier whose gift isn't in the cart is independently eligible
+        var eligible = tiers.filter(function (t) {
+          return totalWithoutGift >= t.threshold && !t.giftInCart;
+        });
+
+        if (eligible.length) {
+          var highest = highestOf(eligible);
+          setTimeout(function () { addClaimButton(highest); }, 300);
+
+          // auto-popup at most one tier (the highest unclaimed & unseen) — never stack overlays.
+          var toShow = eligible.filter(function (t) {
+            return sessionStorage.getItem(t.keySeen) !== "true" && sessionStorage.getItem(t.keyRemoved) !== "true";
+          });
+          if (toShow.length && !anyPopupOpen()) {
+            highestOf(toShow).showPopup();
           }
         } else {
           removeClaimButtons();
-          if (totalWithoutGift < GIFT_THRESHOLD) {
-            sessionStorage.removeItem("dropyGiftPopupSeen");
-          }
         }
       };
       x.send();
     }
 
     window.dropyGiftSync = pollCart;
-    loadProducts(function (products) {
-      renderProducts(products);
-      setTimeout(pollCart, 300);
-    });
   }
 })();
