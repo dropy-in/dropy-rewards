@@ -1,0 +1,14 @@
+{
+  "name": "gift-discount",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiered cumulative free-gift product discount (Shopify Function)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "src/run.js",
+  "scripts": {
+    "typegen": "shopify app function typegen",
+    "build": "shopify app function build",
+    "preview": "shopify app function run"
+  }
+}
