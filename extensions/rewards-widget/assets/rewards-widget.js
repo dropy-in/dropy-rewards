@@ -482,7 +482,7 @@
           // Cart broker re-syncs after each /cart/change.js, so we never self-trigger (no loop).
           // 2s per-tier cooldown caps request rate -> a failed/rate-limited call can't storm.
           if (giftLine && (Date.now() - (t._lastFix || 0) > 2000)) {
-            if (totalWithoutGift < t.threshold && sessionStorage.getItem(t.keyRemoved) !== "true") {
+            if (totalWithoutGift < t.threshold) {
               t._lastFix = Date.now();
               sessionStorage.setItem(t.keyRemoved, "true");
               gxhr("POST", "/cart/change.js", JSON.stringify({ id: giftLine.key, quantity: 0 }), function () {});
