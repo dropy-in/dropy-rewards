@@ -96,6 +96,17 @@
 
   function render(res, flash) {
     var body = panel.querySelector(".dr-body");
+    // — Store credit badge in header —
+    var head = panel.querySelector(".dr-head");
+    var creditEl = head.querySelector(".dr-credit");
+    if (res.loggedIn && res.storeCredit && parseFloat(res.storeCredit.amount) > 0) {
+      if (!creditEl) {
+        creditEl = document.createElement("div");
+        creditEl.className = "dr-credit";
+        head.appendChild(creditEl);
+      }
+      creditEl.innerHTML = "💳 Store Credit: ₹" + parseFloat(res.storeCredit.amount).toLocaleString("en-IN");
+    } else if (creditEl) { creditEl.remove(); }
     var rupee = (res.config.pointValuePaise / 100).toFixed(2);
     var h = "";
 
@@ -161,7 +172,7 @@
         btn.textContent = "…";
         xhr("POST", "/apps/rewards/redeem", "program_id=" + encodeURIComponent(btn.dataset.id), function (err, r) {
           if (err || !r || !r.ok) {
-            load((r && r.error) ? '<b style="color:#c2410c">' + esc(r.error) + "</b>" : '<b style="color:#c2410c">Something went wrong</b>');
+            load((r && r.error) ? '<b style="color:#ffd9b3">' + esc(r.error) + "</b>" : '<b style="color:#ffd9b3">Something went wrong</b>');
             return;
           }
           var msg = "🎉 <b>" + esc(r.name) + "</b> redeemed!";

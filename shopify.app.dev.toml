@@ -40,6 +40,5 @@ subpath = "rewards"
 prefix = "apps"
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true
 dev_store_url = "dropy-rewards-dev.myshopify.com"

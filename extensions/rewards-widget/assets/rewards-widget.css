@@ -639,3 +639,124 @@
     height: 60px;
   }
 }
+/* ───────── Dropy Rewards drawer — promo-popup reskin ─────────
+   Matches the orange promo popup: gradient + white dashed inset border
+   + frosted glass cards + white text/buttons. Append-only — delete to revert. */
+
+.dr-panel {
+  background: linear-gradient(135deg, rgba(251, 137, 60, 0.94), rgba(251, 200, 60, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  outline: 2px dashed rgba(255, 255, 255, 0.6);
+  outline-offset: -8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 24px 60px -20px rgba(120, 50, 5, 0.45);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dr-panel { background: linear-gradient(135deg, #fb9a3c, #fbbf3c); }
+}
+
+.dr-head { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+.dr-card { color: #fff; }
+.dr-card:not(.dr-flash) {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  box-shadow: 0 8px 24px -10px rgba(120, 50, 5, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.dr-title { color: rgba(255, 255, 255, 0.85); }
+.dr-sub { color: rgba(255, 255, 255, 0.80); }
+.dr-prog-row { color: rgba(255, 255, 255, 0.90); }
+.dr-prog { border-top-color: rgba(255, 255, 255, 0.18); }
+
+.dr-big {
+  background: none; -webkit-text-fill-color: #fff; color: #fff;
+  text-shadow: 0 1px 3px rgba(120, 45, 5, 0.35);
+}
+
+.dr-pend {
+  color: #fff; background: rgba(255, 255, 255, 0.20);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.dr-code {
+  color: #fff; background: rgba(255, 255, 255, 0.18);
+  border: 1.5px dashed rgba(255, 255, 255, 0.70);
+}
+
+.dr-track { background: rgba(255, 255, 255, 0.28); }
+.dr-fill {
+  background: linear-gradient(90deg, #ffffff, #fff3e0);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.70);
+}
+
+.dr-btn {
+  color: #c2410c; background: #fff;
+  box-shadow: 0 6px 16px -6px rgba(120, 50, 5, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.60);
+}
+.dr-btn:hover {
+  box-shadow: 0 10px 22px -8px rgba(120, 50, 5, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.60);
+}
+
+.dr-flash { border-color: rgba(255, 255, 255, 0.45); }
+/* ───────── Dropy Gift Popup — orange reskin (match promo popup) ───────── */
+.dropy-gift-header {
+  background: linear-gradient(135deg, rgba(251,137,60,0.94), rgba(251,200,60,0.94)) !important;
+  outline: 2px dashed rgba(255,255,255,0.5);
+  outline-offset: -8px;
+}
+.dropy-gift-header h3 { color: #fff; }
+.dropy-gift-header h3 span { color: #fff; font-style: italic; }
+.dropy-gift-header p { color: rgba(255,255,255,0.8); }
+.dropy-gift-close { background: rgba(255,255,255,0.22); }
+.dropy-gift-close:hover { background: rgba(255,255,255,0.35); }
+.dropy-gift-modal {
+  border: 1px solid rgba(251,137,60,0.3);
+  box-shadow: 0 20px 60px rgba(120,50,5,0.35);
+}
+.dropy-gift-footer { color: #b45309; }
+
+/* ───────── Store credit badge in header ───────── */
+.dr-credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.22);
+  border: 1px solid rgba(255,255,255,0.45);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+/* ───────── Launcher button — match panel gradient ───────── */
+.dr-door {
+  background: linear-gradient(135deg, rgba(251,137,60,0.94), rgba(251,200,60,0.94));
+  outline: 2px dashed rgba(255,255,255,0.6);
+  outline-offset: -4px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 6px 18px -6px rgba(120,50,5,0.45);
+}
+.dr-door:hover {
+  box-shadow: 0 12px 38px rgba(0,0,0,0.22), 0 10px 22px -8px rgba(120,50,5,0.55);
+}
+/* ───────── Launcher button animation ───────── */
+@keyframes drPulseRing {
+  0%   { box-shadow: 0 0 0 0 rgba(251,137,60,0.55), 0 8px 32px rgba(0,0,0,0.18); }
+  70%  { box-shadow: 0 0 0 12px rgba(251,137,60,0), 0 8px 32px rgba(0,0,0,0.18); }
+  100% { box-shadow: 0 0 0 0 rgba(251,137,60,0), 0 8px 32px rgba(0,0,0,0.18); }
+}
+@keyframes drBreathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+.dr-door {
+  animation: drPulseRing 2.5s ease-out infinite, drBreathe 3s ease-in-out infinite;
+}
+.dr-door:hover {
+  animation: none;
+  transform: translateY(-2px) scale(1.06);
+}
