@@ -454,20 +454,6 @@
           }
         });
 
-        // enforce threshold: gift in cart but qualifying total fell below this tier → drop it, then re-poll
-        tiers.forEach(function (t) {
-          if (t.giftInCart && totalWithoutGift < t.threshold) {
-            var gv = null;
-            for (var j = 0; j < items.length; j++) {
-              if (t.variantIds.indexOf(items[j].variant_id) !== -1) { gv = items[j].variant_id; break; }
-            }
-            if (gv) gxhr("POST", "/cart/change.js", JSON.stringify({ id: gv, quantity: 0 }), function () {
-              sessionStorage.setItem(t.keyRemoved, "true");
-              if (window.dropyGiftSync) window.dropyGiftSync();
-            });
-          }
-        });
-
         var totalChanged = total !== lastCartTotal;
         var increased = total > lastCartTotal;
         if (totalChanged) lastCartTotal = total;
