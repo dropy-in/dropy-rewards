@@ -454,22 +454,56 @@
           }
         });
 
+        // enforce threshold: gift in cart but qualifying total fell below this tier → drop it, then re-poll
+        tiers.forEach(function (t) {
+          if (t.giftInCart && totalWithoutGift < t.threshold) {
+            var gv = null;
+            for (var j = 0; j < items.length; j++) {
+              if (t.variantIds.indexOf(items[j].variant_id) !== -1) { gv = items[j].variant_id; break; }
+            }
+            if (gv) gxhr("POST", "/cart/change.js", JSON.stringify({ id: gv, quantity: 0 }), function () {
+              sessionStorage.setItem(t.keyRemoved, "true");
+              if (window.dropyGiftSync) window.dropyGiftSync();
+            });
+          }
+        });
+
         var totalChanged = total !== lastCartTotal;
         var increased = total > lastCartTotal;
         if (totalChanged) lastCartTotal = total;
 
         tiers.forEach(function (t) {
-          // crossing this tier's threshold (going up) re-arms an earlier manual removal
+          // locate this tier's gift line in the live cart, if present
+          var giftLine = null;
+          for (var gi = 0; gi < items.length; gi++) {
+            if (t.variantIds.indexOf(items[gi].variant_id) !== -1) { giftLine = items[gi]; break; }
+          }
+
+          // crossing this tier's threshold upward re-arms a prior removal
           if (totalChanged && increased && !t.giftInCart && totalWithoutGift >= t.threshold) {
             sessionStorage.removeItem(t.keyRemoved);
           }
-          // a gift that was added and then disappeared = user removed it; don't nag
+          // gift was added then vanished = user removed it themselves; don't re-pop
           if (!t.giftInCart && sessionStorage.getItem(t.keyAdded) === "true") {
             sessionStorage.setItem(t.keyRemoved, "true");
           }
-          // dropped back below this tier → re-arm its popup for the next crossing
+          // back below this tier -> re-arm the popup for the next crossing
           if (totalWithoutGift < t.threshold) {
             sessionStorage.removeItem(t.keySeen);
+          }
+
+          // ENFORCE threshold + single-qty, mirroring what a Bxgy does natively.
+          // Cart broker re-syncs after each /cart/change.js, so we never self-trigger (no loop).
+          // 2s per-tier cooldown caps request rate -> a failed/rate-limited call can't storm.
+          if (giftLine && (Date.now() - (t._lastFix || 0) > 2000)) {
+            if (totalWithoutGift < t.threshold && sessionStorage.getItem(t.keyRemoved) !== "true") {
+              t._lastFix = Date.now();
+              sessionStorage.setItem(t.keyRemoved, "true");
+              gxhr("POST", "/cart/change.js", JSON.stringify({ id: giftLine.key, quantity: 0 }), function () {});
+            } else if (totalWithoutGift >= t.threshold && giftLine.quantity > 1) {
+              t._lastFix = Date.now();
+              gxhr("POST", "/cart/change.js", JSON.stringify({ id: giftLine.key, quantity: 1 }), function () {});
+            }
           }
         });
 
