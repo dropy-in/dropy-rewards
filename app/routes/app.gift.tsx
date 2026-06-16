@@ -48,53 +48,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { enabled: (c.gift_enabled ?? "0") === "1", tiers };
 };
 
-// Sync the gift tiers into the app-owned shop metafield $app:gift/tiers that the
-// gift-discount Shopify Function reads. Supabase (loyalty_config "gift_tiers") stays the source
-// of truth; this is a denormalized read-model for the Function. App-owned ($app) metafields are
-// writable by the app without the metafields access scopes. Best-effort: never fail the save.
-async function syncGiftMetafield(
-  admin: any,
-  tiers: Array<{ threshold_paise: number; handles: string[]; label: string }>,
-) {
-  try {
-    const shopRes = await admin.graphql(`#graphql
-      query GiftShopId { shop { id } }`);
-    const shopId = (await shopRes.json())?.data?.shop?.id;
-    if (!shopId) {
-      console.error("[gift] metafield sync: no shop id");
-      return;
-    }
-    const res = await admin.graphql(
-      `#graphql
-      mutation SetGiftTiers($metafields: [MetafieldsSetInput!]!) {
-        metafieldsSet(metafields: $metafields) {
-          metafields { id }
-          userErrors { field message code }
-        }
-      }`,
-      {
-        variables: {
-          metafields: [
-            {
-              ownerId: shopId,
-              namespace: "$app:gift",
-              key: "tiers",
-              type: "json",
-              value: JSON.stringify({ tiers }),
-            },
-          ],
-        },
-      },
-    );
-    const ue = (await res.json())?.data?.metafieldsSet?.userErrors;
-    if (ue?.length) console.error("[gift] metafield sync userErrors", JSON.stringify(ue));
-  } catch (e: any) {
-    console.error("[gift] metafield sync failed", e?.message || e);
-  }
-}
-
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  await authenticate.admin(request);
   const form = await request.formData();
   const intent = String(form.get("intent"));
 
@@ -126,8 +81,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .upsert([{ key: "gift_tiers", value: JSON.stringify(clean) }]);
     if (error) throw error;
 
-    // Push the same tiers to the Function's config metafield so the discount stays in sync.
-    await syncGiftMetafield(admin, clean);
     return { ok: true };
   }
 
