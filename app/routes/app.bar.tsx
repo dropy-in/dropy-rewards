@@ -6,17 +6,17 @@ import { authenticate } from "../shopify.server";
 import { supabase } from "../supabase.server";
 
 // The progress bar config lives in a single loyalty_config row (key "bar_config") as a JSON
-// string. The storefront reads it via the app-proxy route proxy.bar-config.tsx. Shape:
+// string. The storefront reads it via the app-proxy route proxy.bar.config.tsx. Shape:
 //   {
 //     enabled: boolean,
 //     tiers: [ { threshold_paise: int, label: string, type: string } ],   // up to 3
-//     messages: [ string, string, string, string ]                        // 4 templates ({remaining})
+//     messages: { below_t1, t1_reached, t2_reached, all_reached }         // templates ({remaining})
 //   }
-// Thresholds are stored in PAISE (₹ x 100) to match the rest of the app and the storefront's
-// cart.total_price; the admin works in rupees and converts on load/save.
+// The theme JS reads messages by name (cfg.messages.below_t1, .t1_reached, .t2_reached,
+// .all_reached) — these keys must match EXACTLY. Thresholds are stored in PAISE (₹ x 100) to
+// match the rest of the app and the storefront's cart.total_price; the admin works in rupees.
 
 const TIER_COUNT = 3;
-const MSG_COUNT = 4;
 
 const TYPES = [
   { value: "free_shipping", label: "Free shipping" },
@@ -25,18 +25,12 @@ const TYPES = [
   { value: "store_credit", label: "Store credit" },
 ];
 
-const MSG_LABELS = [
-  "Message — before Tier 1 is reached",
-  "Message — after Tier 1 (progressing to Tier 2)",
-  "Message — after Tier 2 (progressing to Tier 3)",
-  "Message — when every tier is unlocked",
-];
-
-const MSG_PLACEHOLDERS = [
-  "Spend {remaining} more to unlock free shipping!",
-  "You're {remaining} away from a free gift!",
-  "Only {remaining} more to unlock your discount!",
-  "🎉 You've unlocked every reward!",
+// The 4 message states, in order. `key` is the exact name the theme JS reads off cfg.messages.
+const MSG_FIELDS = [
+  { key: "below_t1", label: "Message — before Tier 1 is reached", placeholder: "Add {remaining} more for a free gift 🎁" },
+  { key: "t1_reached", label: "Message — after Tier 1 (progressing to Tier 2)", placeholder: "🎁 Gift unlocked! Add {remaining} more for FREE shipping 🚚" },
+  { key: "t2_reached", label: "Message — after Tier 2 (progressing to Tier 3)", placeholder: "🎁 Gift + 🚚 Shipping unlocked! Add {remaining} more for a 2nd free gift 🎁" },
+  { key: "all_reached", label: "Message — when every tier is unlocked", placeholder: "🎉 Free Gift + Free Shipping + 2nd Gift — all unlocked!" },
 ];
 
 type AdminTier = { thresholdRupees: number; label: string; type: string };
@@ -67,8 +61,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
   });
 
-  const msgsRaw: any[] = Array.isArray(cfg.messages) ? cfg.messages : [];
-  const messages: string[] = Array.from({ length: MSG_COUNT }, (_, i) => String(msgsRaw[i] ?? ""));
+  // messages is an object keyed by state; tolerate a legacy array by mapping it onto the keys in order.
+  let msgsRaw: Record<string, any> = {};
+  if (Array.isArray(cfg.messages)) {
+    MSG_FIELDS.forEach((f, i) => {
+      msgsRaw[f.key] = cfg.messages[i];
+    });
+  } else if (cfg.messages && typeof cfg.messages === "object") {
+    msgsRaw = cfg.messages;
+  }
+  const messages: Record<string, string> = Object.fromEntries(
+    MSG_FIELDS.map((f) => [f.key, String(msgsRaw[f.key] ?? "")]),
+  );
 
   const enabled = cfg.enabled === true || cfg.enabled === "1";
 
@@ -82,16 +86,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "save") {
     let tiersIn: any[] = [];
-    let msgsIn: any[] = [];
+    let msgsIn: any = {};
     try {
       tiersIn = JSON.parse(String(form.get("tiers") ?? "[]"));
     } catch (e) {
       tiersIn = [];
     }
     try {
-      msgsIn = JSON.parse(String(form.get("messages") ?? "[]"));
+      msgsIn = JSON.parse(String(form.get("messages") ?? "{}"));
     } catch (e) {
-      msgsIn = [];
+      msgsIn = {};
     }
 
     const tiers = (Array.isArray(tiersIn) ? tiersIn : [])
@@ -102,9 +106,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }))
       .filter((t) => t.threshold_paise > 0); // drop blank tier rows
 
-    const messages = (Array.isArray(msgsIn) ? msgsIn : [])
-      .slice(0, MSG_COUNT)
-      .map((m) => String(m ?? ""));
+    const messages: Record<string, string> = Object.fromEntries(
+      MSG_FIELDS.map((f) => [f.key, String(msgsIn?.[f.key] ?? "")]),
+    );
 
     const config = {
       enabled: String(form.get("enabled")) === "1",
@@ -139,7 +143,7 @@ export default function BarPage() {
       label: val(`bar-label-${i}`),
       type: val(`bar-type-${i}`) || "free_shipping",
     }));
-    const messages = data.messages.map((_, i) => val(`bar-msg-${i}`));
+    const messages = Object.fromEntries(MSG_FIELDS.map((f) => [f.key, val(`bar-msg-${f.key}`)]));
     fetcher.submit(
       {
         intent: "save",
@@ -200,8 +204,8 @@ export default function BarPage() {
             Use <b>{"{remaining}"}</b> where the amount still needed to reach the next tier should appear (e.g.{" "}
             <i>Spend {"{remaining}"} more to unlock free shipping</i>).
           </s-paragraph>
-          {data.messages.map((m, i) => (
-            <s-text-field key={i} id={`bar-msg-${i}`} label={MSG_LABELS[i]} value={m} placeholder={MSG_PLACEHOLDERS[i]} />
+          {MSG_FIELDS.map((f) => (
+            <s-text-field key={f.key} id={`bar-msg-${f.key}`} label={f.label} value={data.messages[f.key] ?? ""} placeholder={f.placeholder} />
           ))}
         </s-stack>
       </s-section>
