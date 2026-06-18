@@ -1,0 +1,29 @@
+query Input {
+  cart {
+    lines {
+      quantity
+      merchandise {
+        ... on ProductVariant {
+          id
+          product {
+            id
+            hasAnyTag(tags: ["gift-tier2"])
+          }
+        }
+      }
+      cost {
+        totalAmount {
+          amount
+        }
+      }
+    }
+    cost {
+      totalAmount {
+        amount
+      }
+      subtotalAmount {
+        amount
+      }
+    }
+  }
+}

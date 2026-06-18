@@ -75,6 +75,40 @@ export async function earnFromOrder(order: any, admin?: any): Promise<string> {
   return `earned ${pts} (pending ${cfg.pendingDays}d)`;
 }
 
+// ---------- Store credit cashback (3% auto-credit) ----------
+
+const CASHBACK_PERCENT = 3;
+
+export async function creditStoreCreditFromOrder(order: any, admin: any): Promise<string> {
+  const cust = order?.customer;
+  if (!cust?.id || !admin) return "sc-skip:no-customer-or-admin";
+
+  const orderTotal = parseFloat(String(order.subtotal_price ?? "0"));
+  const creditAmount = Math.round(orderTotal * CASHBACK_PERCENT) / 100;
+  if (creditAmount <= 0) return "sc-skip:zero";
+
+  const customerGid = `gid://shopify/Customer/${cust.id}`;
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      mutation credit($id: ID!, $creditInput: StoreCreditAccountCreditInput!) {
+        storeCreditAccountCredit(id: $id, creditInput: $creditInput) {
+          storeCreditAccountTransaction { amount { amount currencyCode } }
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: customerGid, creditInput: { creditAmount: { amount: creditAmount.toFixed(2), currencyCode: "INR" } } } },
+    );
+    const j = await res.json();
+    if (j.errors) return `sc-error:${JSON.stringify(j.errors).slice(0, 100)}`;
+    const errs = j.data?.storeCreditAccountCredit?.userErrors;
+    if (errs?.length) return `sc-error:${errs.map((e: any) => e.message).join(",")}`;
+    return `sc-credited:₹${creditAmount.toFixed(2)}`;
+  } catch (e) {
+    return `sc-exception:${String(e).slice(0, 100)}`;
+  }
+}
+
 export async function clawbackFromRefund(refund: any): Promise<string> {
   const cfg = await getConfig();
   const orderId = String(refund.order_id);
