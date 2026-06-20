@@ -13,7 +13,9 @@
 ></div>
 {{ 'rewards-widget.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'rewards-widget.js' | asset_url }}" defer></script>
-
+<div id="dropy-exit-root" data-shop="{{ shop.permanent_domain }}" style="display:none"></div>
+{{ 'exit-intent.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'exit-intent.js' | asset_url }}" defer></script>
 {% schema %}
 {
   "name": "Dropy Rewards Widget",
