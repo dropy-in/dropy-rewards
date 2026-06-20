@@ -918,12 +918,17 @@
 
     // Build timer bar for each container
     containers.forEach(function (container) {
+      var labelText = String(t.label || "Items reserved for you")
+        .replace(/^[\s\uD800-\uDFFF\u2300-\u27BF\uFE0F\u200D]+/, "").trim() || "Items reserved for you";
+
       var bar = document.createElement("div");
       bar.className = "dei-timer-bar";
       bar.innerHTML =
-        '<span class="dei-timer-icon">🔒</span>' +
-        '<span class="dei-timer-label">' + esc(t.label || "Items reserved for you") + '</span>' +
-        '<span class="dei-timer-countdown">--:--</span>' +
+        '<div class="dei-timer-row">' +
+          '<svg class="dei-timer-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+          '<span class="dei-timer-label">' + esc(labelText) + '</span>' +
+          '<span class="dei-timer-countdown">--:--</span>' +
+        '</div>' +
         '<div class="dei-timer-progress"><div class="dei-timer-progress-fill" style="width:100%"></div></div>';
 
       // Insert at top of container
