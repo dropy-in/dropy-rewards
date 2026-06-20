@@ -601,6 +601,41 @@
     onReady();
   });
 
+  // dropy.in's /cart.js can desync (returns empty while the page shows items).
+  // This reads the visible cart count as a fallback so the popup still fires.
+  function domCartCount() {
+    // Common cart count bubble selectors (Maximize theme + generic patterns)
+    var sels = [
+      ".cart-count-bubble", ".cart-count", "[data-cart-count]",
+      ".header__cart-count", ".cart-link__bubble", ".js-cart-count",
+      "#CartCount", ".site-header__cart-count", ".cart-item-count"
+    ];
+    for (var i = 0; i < sels.length; i++) {
+      var el = document.querySelector(sels[i]);
+      if (el) {
+        var n = parseInt((el.textContent || "").replace(/\D/g, ""), 10);
+        if (!isNaN(n)) return n;
+      }
+    }
+    // On the cart page itself: count line-item rows
+    if (isCartPage()) {
+      var rows = document.querySelectorAll(
+        ".cart-item, .cart__row, [data-cart-item], tr.cart-item, .line-item"
+      );
+      if (rows.length) return rows.length;
+    }
+    return null; // unknown
+  }
+
+  // Returns true if the cart has items, using /cart.js first then DOM fallback.
+  function cartHasItems() {
+    if (cart && typeof cart.item_count === "number" && cart.item_count > 0) return true;
+    var dom = domCartCount();
+    if (dom !== null) return dom > 0;
+    // Both unknown: don't block (assume they have something — exit intent implies browsing)
+    return cart === null;
+  }
+
 
   // ═══════════════════════════════════════
   //  EXIT INTENT POPUP
@@ -636,8 +671,8 @@
     sessionStorage.setItem("dei_pages", String(pageViews));
     if (pageViews < (p.min_pages || 2)) return;
 
-    // 7. Cart must have items
-    if (!cart || !cart.item_count || cart.item_count < 1) return;
+    // 7. Cart must have items (with DOM fallback for broken /cart.js)
+    if (!cartHasItems()) return;
 
     // ── Set thank-you page cookie (for conversion tracking) ──
     if (window.location.pathname.indexOf("/thank_you") !== -1 ||
@@ -657,7 +692,7 @@
     var popup = document.createElement("div");
     popup.className = "dei-popup";
 
-    var cartTotal = cart.total_price ? "₹" + (cart.total_price / 100).toLocaleString("en-IN") : "";
+    var cartTotal = (cart && cart.total_price) ? "₹" + (cart.total_price / 100).toLocaleString("en-IN") : "";
 
     var html = '<div class="dei-handle"></div>' +
       '<button class="dei-close" aria-label="Close">&times;</button>' +
@@ -680,8 +715,8 @@
         '</div>';
     }
 
-    // Cart total
-    if (cartTotal) {
+    // Cart total (only if /cart.js gave us real data)
+    if (cartTotal && cart && cart.item_count) {
       html += '<p class="dei-cart-total">Cart total: <strong>' + cartTotal + '</strong> (' + cart.item_count + ' item' + (cart.item_count > 1 ? 's' : '') + ')</p>';
     }
 
@@ -802,7 +837,7 @@
   // ═══════════════════════════════════════
   function initTimer() {
     var t = cfg.timer;
-    if (!cart || !cart.item_count || cart.item_count < 1) return;
+    if (!cartHasItems()) return;
     if (isCheckoutPage()) return;
 
     // Only show on cart-related contexts
