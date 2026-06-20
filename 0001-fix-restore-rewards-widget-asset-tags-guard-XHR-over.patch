@@ -1,0 +1,60 @@
+From 6773cf1cf716a37f9903a1a12a94867709aafcd1 Mon Sep 17 00:00:00 2001
+From: Dropy Dev <dev@dropy.in>
+Date: Sat, 20 Jun 2026 15:03:17 +0000
+Subject: [PATCH] fix: restore rewards-widget asset tags + guard XHR override
+
+- sed had accidentally deleted rewards-widget.css/js tags too
+  (matched 'rewards-widget' in filename), breaking both widgets
+- XHR override for cart timer was choking on Shopify's internal
+  beacon URLs (Invalid URL error). Now only intercepts relative
+  /cart/add paths and wraps in try/catch so it can never break
+  the host XHR
+---
+ .../rewards-widget/assets/rewards-widget.js       | 15 +++++++++------
+ .../rewards-widget/blocks/rewards-widget.liquid   |  2 ++
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/extensions/rewards-widget/assets/rewards-widget.js b/extensions/rewards-widget/assets/rewards-widget.js
+index f6cae11..d1e51bb 100644
+--- a/extensions/rewards-widget/assets/rewards-widget.js
++++ b/extensions/rewards-widget/assets/rewards-widget.js
+@@ -931,14 +931,17 @@
+     function watchCartChanges() {
+       // Listen for Shopify's cart change event
+       document.addEventListener("cart:change", resetTimer);
+-      // Also intercept XHR to /cart/add
++      // Also intercept XHR to /cart/add — but ONLY relative cart paths, and never
++      // touch Shopify's internal beacon/telemetry URLs (which break on URL parsing).
+       var origOpen = XMLHttpRequest.prototype.open;
+       XMLHttpRequest.prototype.open = function (method, url) {
+-        if (typeof url === "string" && url.indexOf("/cart/add") !== -1) {
+-          this.addEventListener("load", function () {
+-            resetTimer();
+-          });
+-        }
++        try {
++          if (typeof url === "string" && url.charAt(0) === "/" && url.indexOf("/cart/add") === 0) {
++            this.addEventListener("load", function () {
++              resetTimer();
++            });
++          }
++        } catch (e) { /* never let our hook break the host XHR */ }
+         return origOpen.apply(this, arguments);
+       };
+     }
+diff --git a/extensions/rewards-widget/blocks/rewards-widget.liquid b/extensions/rewards-widget/blocks/rewards-widget.liquid
+index f472d56..eb1643d 100644
+--- a/extensions/rewards-widget/blocks/rewards-widget.liquid
++++ b/extensions/rewards-widget/blocks/rewards-widget.liquid
+@@ -12,6 +12,8 @@
+   data-account-url="{{ routes.account_url }}"
+ ></div>
+ <div id="dropy-exit-root" data-shop="{{ shop.permanent_domain }}" style="display:none"></div>
++{{ 'rewards-widget.css' | asset_url | stylesheet_tag }}
++<script src="{{ 'rewards-widget.js' | asset_url }}" defer></script>
+ {% schema %}
+ {
+   "name": "Dropy Rewards Widget",
+-- 
+2.43.0
+

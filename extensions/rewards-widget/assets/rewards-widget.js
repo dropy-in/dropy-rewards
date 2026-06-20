@@ -931,14 +931,17 @@
     function watchCartChanges() {
       // Listen for Shopify's cart change event
       document.addEventListener("cart:change", resetTimer);
-      // Also intercept XHR to /cart/add
+      // Also intercept XHR to /cart/add — but ONLY relative cart paths, and never
+      // touch Shopify's internal beacon/telemetry URLs (which break on URL parsing).
       var origOpen = XMLHttpRequest.prototype.open;
       XMLHttpRequest.prototype.open = function (method, url) {
-        if (typeof url === "string" && url.indexOf("/cart/add") !== -1) {
-          this.addEventListener("load", function () {
-            resetTimer();
-          });
-        }
+        try {
+          if (typeof url === "string" && url.charAt(0) === "/" && url.indexOf("/cart/add") === 0) {
+            this.addEventListener("load", function () {
+              resetTimer();
+            });
+          }
+        } catch (e) { /* never let our hook break the host XHR */ }
         return origOpen.apply(this, arguments);
       };
     }
