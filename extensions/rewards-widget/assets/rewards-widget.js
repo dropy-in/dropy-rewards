@@ -691,13 +691,34 @@
 
     var popup = document.createElement("div");
     popup.className = "dei-popup";
+    popup.setAttribute("role", "dialog");
+    popup.setAttribute("aria-modal", "true");
+    popup.setAttribute("aria-label", "Cart reminder");
 
     var cartTotal = (cart && cart.total_price) ? "₹" + (cart.total_price / 100).toLocaleString("en-IN") : "";
+    var itemCount = (cart && cart.item_count) ? cart.item_count : 0;
 
-    var html = '<div class="dei-handle"></div>' +
-      '<button class="dei-close" aria-label="Close">&times;</button>' +
-      '<h2 class="dei-heading">' + esc(tier.heading) + '</h2>' +
-      '<p class="dei-body">' + esc(tier.body) + '</p>';
+    // ── Header band (brand moment) ──
+    var html =
+      '<div class="dei-header">' +
+        '<div class="dei-handle"></div>' +
+        '<button class="dei-close" aria-label="Close">&times;</button>' +
+        '<span class="dei-eyebrow">Don\u2019t miss out</span>' +
+        '<h2 class="dei-heading">' + esc(tier.heading) + '</h2>' +
+      '</div>';
+
+    // ── Content body ──
+    html += '<div class="dei-content">';
+    html += '<p class="dei-body">' + esc(tier.body) + '</p>';
+
+    // Hero cart-value anchor (only when we have real totals)
+    if (cartTotal && itemCount) {
+      html +=
+        '<div class="dei-value">' +
+          '<span class="dei-value-amount">' + cartTotal + '</span>' +
+          '<span class="dei-value-label">waiting in your cart \u00b7 ' + itemCount + ' item' + (itemCount > 1 ? 's' : '') + '</span>' +
+        '</div>';
+    }
 
     // Gift reminder
     if (p.show_gift_reminder && p.gift_reminder_text) {
@@ -710,19 +731,23 @@
     // Discount code
     if (tier.discount) {
       html += '<div class="dei-discount">' +
-        '<span>Use code </span>' +
+        '<span>Apply at checkout</span>' +
         '<span class="dei-discount-code">' + esc(tier.discount) + '</span>' +
         '</div>';
     }
 
-    // Cart total (only if /cart.js gave us real data)
-    if (cartTotal && cart && cart.item_count) {
-      html += '<p class="dei-cart-total">Cart total: <strong>' + cartTotal + '</strong> (' + cart.item_count + ' item' + (cart.item_count > 1 ? 's' : '') + ')</p>';
-    }
-
     // CTA
     html += '<a class="dei-cta" href="/checkout">' + esc(p.cta_text || "Complete My Order") + '</a>';
-    html += '<button class="dei-secondary">Continue Shopping</button>';
+    html += '<button class="dei-secondary">Keep shopping</button>';
+
+    // Trust footer
+    html +=
+      '<div class="dei-trust">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' +
+        '<span>100% Authentic \u00b7 Directly imported from the USA</span>' +
+      '</div>';
+
+    html += '</div>'; // .dei-content
 
     popup.innerHTML = html;
 
