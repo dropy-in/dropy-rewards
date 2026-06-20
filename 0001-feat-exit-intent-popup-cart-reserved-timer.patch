@@ -1,0 +1,1185 @@
+From 59dcfbfaa0bbb4a04e8138e08d0996c91800c486 Mon Sep 17 00:00:00 2001
+From: Dropy Dev <dev@dropy.in>
+Date: Sat, 20 Jun 2026 13:59:06 +0000
+Subject: [PATCH] feat: exit intent popup + cart reserved timer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Admin page /app/exit with popup + timer settings
+- Proxy endpoint /apps/rewards/exit/config (5min cache)
+- Theme extension: exit-intent (app embed block)
+
+Popup features:
+- Desktop: mouseleave from viewport top
+- Mobile: idle timer (configurable, default 20s)
+- Both: visibilitychange (tab/app switch)
+- 3-tier escalation (reminder → discount → urgency)
+- Anti-annoyance: session limit, 72h cooldown, 7-day dismiss,
+  max 3 lifetime shows, min pages, min seconds, conversion cookie
+- Cart total + item count display
+- Free gift reminder callout
+- Discount code display per tier
+
+Cart timer features:
+- 'Items reserved for you' countdown (default 15min)
+- Progress bar drain animation
+- Soft expiry: shows urgency message, never clears cart
+- Silent reset on user interaction
+- Resets on add-to-cart
+- Injects into cart page + cart drawer
+
+All config managed from Supabase loyalty_config (key: exit_config)
+Uses XHR (not fetch) per dropy.in theme requirement
+---
+ app/routes/app.exit.tsx                       | 307 ++++++++++++
+ app/routes/app.tsx                            |   1 +
+ app/routes/proxy.exit.config.tsx              |  29 ++
+ extensions/exit-intent/assets/exit-intent.css | 285 ++++++++++++
+ extensions/exit-intent/assets/exit-intent.js  | 435 ++++++++++++++++++
+ .../exit-intent/blocks/exit-intent.liquid     |  15 +
+ .../exit-intent/locales/en.default.json       |   4 +
+ extensions/exit-intent/shopify.extension.toml |   2 +
+ 8 files changed, 1078 insertions(+)
+ create mode 100644 app/routes/app.exit.tsx
+ create mode 100644 app/routes/proxy.exit.config.tsx
+ create mode 100644 extensions/exit-intent/assets/exit-intent.css
+ create mode 100644 extensions/exit-intent/assets/exit-intent.js
+ create mode 100644 extensions/exit-intent/blocks/exit-intent.liquid
+ create mode 100644 extensions/exit-intent/locales/en.default.json
+ create mode 100644 extensions/exit-intent/shopify.extension.toml
+
+diff --git a/app/routes/app.exit.tsx b/app/routes/app.exit.tsx
+new file mode 100644
+index 0000000..61b886b
+--- /dev/null
++++ b/app/routes/app.exit.tsx
+@@ -0,0 +1,307 @@
++import { useEffect } from "react";
++import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
++import { useFetcher, useLoaderData } from "react-router";
++import { useAppBridge } from "@shopify/app-bridge-react";
++import { authenticate } from "../shopify.server";
++import { supabase } from "../supabase.server";
++
++// Config stored in loyalty_config row (key "exit_config") as JSON.
++// The storefront reads it via proxy.exit.config.tsx.
++//
++// Shape:
++// {
++//   popup: {
++//     enabled, idle_desktop, idle_mobile, min_pages, min_seconds,
++//     cooldown_hours, dismiss_days, max_lifetime,
++//     tiers: [ { heading, body, discount } ],  // escalation tiers (up to 3)
++//     cta_text, show_gift_reminder, gift_reminder_text
++//   },
++//   timer: {
++//     enabled, duration_seconds, label, expiry_message, expiry_cta
++//   }
++// }
++
++const DEFAULTS = {
++  popup: {
++    enabled: false,
++    idle_desktop: 30,
++    idle_mobile: 20,
++    min_pages: 2,
++    min_seconds: 30,
++    cooldown_hours: 72,
++    dismiss_days: 7,
++    max_lifetime: 3,
++    tiers: [
++      { heading: "Your cart is waiting! 🛒", body: "You've got great items in your cart.", discount: "" },
++      { heading: "Still thinking? 🤔", body: "Use FIRST200 for ₹200 off your first order!", discount: "FIRST200" },
++      { heading: "Last chance! ⏰", body: "Your cart will expire soon — complete your order now.", discount: "" },
++    ],
++    cta_text: "Complete My Order",
++    show_gift_reminder: true,
++    gift_reminder_text: "FREE CeraVe included with your order! 🎁",
++  },
++  timer: {
++    enabled: false,
++    duration_seconds: 900,
++    label: "🔒 Items reserved for you",
++    expiry_message: "⚠️ High demand — items may sell out!",
++    expiry_cta: "Checkout Now",
++  },
++};
++
++const TIER_COUNT = 3;
++
++export const loader = async ({ request }: LoaderFunctionArgs) => {
++  await authenticate.admin(request);
++
++  const { data } = await supabase
++    .from("loyalty_config")
++    .select("value")
++    .eq("key", "exit_config")
++    .maybeSingle();
++
++  let cfg: any = {};
++  try {
++    cfg = data?.value ? JSON.parse(data.value) : {};
++  } catch (e) {
++    cfg = {};
++  }
++
++  const p = cfg.popup ?? {};
++  const t = cfg.timer ?? {};
++
++  const popup = {
++    enabled: p.enabled === true,
++    idle_desktop: parseInt(String(p.idle_desktop ?? DEFAULTS.popup.idle_desktop), 10),
++    idle_mobile: parseInt(String(p.idle_mobile ?? DEFAULTS.popup.idle_mobile), 10),
++    min_pages: parseInt(String(p.min_pages ?? DEFAULTS.popup.min_pages), 10),
++    min_seconds: parseInt(String(p.min_seconds ?? DEFAULTS.popup.min_seconds), 10),
++    cooldown_hours: parseInt(String(p.cooldown_hours ?? DEFAULTS.popup.cooldown_hours), 10),
++    dismiss_days: parseInt(String(p.dismiss_days ?? DEFAULTS.popup.dismiss_days), 10),
++    max_lifetime: parseInt(String(p.max_lifetime ?? DEFAULTS.popup.max_lifetime), 10),
++    tiers: Array.from({ length: TIER_COUNT }, (_, i) => {
++      const tier = Array.isArray(p.tiers) ? p.tiers[i] ?? {} : {};
++      const def = DEFAULTS.popup.tiers[i] ?? {};
++      return {
++        heading: String(tier.heading ?? def.heading ?? ""),
++        body: String(tier.body ?? def.body ?? ""),
++        discount: String(tier.discount ?? def.discount ?? ""),
++      };
++    }),
++    cta_text: String(p.cta_text ?? DEFAULTS.popup.cta_text),
++    show_gift_reminder: p.show_gift_reminder !== false,
++    gift_reminder_text: String(p.gift_reminder_text ?? DEFAULTS.popup.gift_reminder_text),
++  };
++
++  const timer = {
++    enabled: t.enabled === true,
++    duration_seconds: parseInt(String(t.duration_seconds ?? DEFAULTS.timer.duration_seconds), 10),
++    label: String(t.label ?? DEFAULTS.timer.label),
++    expiry_message: String(t.expiry_message ?? DEFAULTS.timer.expiry_message),
++    expiry_cta: String(t.expiry_cta ?? DEFAULTS.timer.expiry_cta),
++  };
++
++  return { popup, timer };
++};
++
++export const action = async ({ request }: ActionFunctionArgs) => {
++  await authenticate.admin(request);
++  const form = await request.formData();
++  const intent = String(form.get("intent"));
++
++  if (intent === "save") {
++    let popupIn: any = {};
++    let timerIn: any = {};
++    try { popupIn = JSON.parse(String(form.get("popup") ?? "{}")); } catch (e) { popupIn = {}; }
++    try { timerIn = JSON.parse(String(form.get("timer") ?? "{}")); } catch (e) { timerIn = {}; }
++
++    const config = {
++      popup: {
++        enabled: popupIn.enabled === true || popupIn.enabled === "1",
++        idle_desktop: Math.max(5, parseInt(String(popupIn.idle_desktop ?? 30), 10) || 30),
++        idle_mobile: Math.max(5, parseInt(String(popupIn.idle_mobile ?? 20), 10) || 20),
++        min_pages: Math.max(1, parseInt(String(popupIn.min_pages ?? 2), 10) || 2),
++        min_seconds: Math.max(5, parseInt(String(popupIn.min_seconds ?? 30), 10) || 30),
++        cooldown_hours: Math.max(1, parseInt(String(popupIn.cooldown_hours ?? 72), 10) || 72),
++        dismiss_days: Math.max(1, parseInt(String(popupIn.dismiss_days ?? 7), 10) || 7),
++        max_lifetime: Math.max(1, parseInt(String(popupIn.max_lifetime ?? 3), 10) || 3),
++        tiers: (Array.isArray(popupIn.tiers) ? popupIn.tiers : []).slice(0, TIER_COUNT).map((t: any) => ({
++          heading: String(t?.heading ?? "").trim(),
++          body: String(t?.body ?? "").trim(),
++          discount: String(t?.discount ?? "").trim(),
++        })),
++        cta_text: String(popupIn.cta_text ?? "Complete My Order").trim(),
++        show_gift_reminder: popupIn.show_gift_reminder === true || popupIn.show_gift_reminder === "1",
++        gift_reminder_text: String(popupIn.gift_reminder_text ?? "").trim(),
++      },
++      timer: {
++        enabled: timerIn.enabled === true || timerIn.enabled === "1",
++        duration_seconds: Math.max(60, parseInt(String(timerIn.duration_seconds ?? 900), 10) || 900),
++        label: String(timerIn.label ?? "").trim(),
++        expiry_message: String(timerIn.expiry_message ?? "").trim(),
++        expiry_cta: String(timerIn.expiry_cta ?? "").trim(),
++      },
++    };
++
++    const { error } = await supabase
++      .from("loyalty_config")
++      .upsert([{ key: "exit_config", value: JSON.stringify(config) }]);
++    if (error) throw error;
++    return { ok: true };
++  }
++
++  return { ok: false };
++};
++
++const val = (id: string) => String((document.getElementById(id) as any)?.value ?? "");
++const chk = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value === "1";
++
++export default function ExitPage() {
++  const data = useLoaderData<typeof loader>();
++  const fetcher = useFetcher<typeof action>();
++  const shopify = useAppBridge();
++
++  useEffect(() => {
++    if (fetcher.data?.ok) shopify.toast.show("Saved");
++  }, [fetcher.data, shopify]);
++
++  const save = () => {
++    const tiers = data.popup.tiers.map((_, i) => ({
++      heading: val(`exit-tier-heading-${i}`),
++      body: val(`exit-tier-body-${i}`),
++      discount: val(`exit-tier-discount-${i}`),
++    }));
++
++    const popup = {
++      enabled: val("exit-popup-enabled") === "1",
++      idle_desktop: val("exit-idle-desktop"),
++      idle_mobile: val("exit-idle-mobile"),
++      min_pages: val("exit-min-pages"),
++      min_seconds: val("exit-min-seconds"),
++      cooldown_hours: val("exit-cooldown-hours"),
++      dismiss_days: val("exit-dismiss-days"),
++      max_lifetime: val("exit-max-lifetime"),
++      tiers,
++      cta_text: val("exit-cta-text"),
++      show_gift_reminder: val("exit-gift-reminder") === "1",
++      gift_reminder_text: val("exit-gift-reminder-text"),
++    };
++
++    const timer = {
++      enabled: val("exit-timer-enabled") === "1",
++      duration_seconds: val("exit-timer-duration"),
++      label: val("exit-timer-label"),
++      expiry_message: val("exit-timer-expiry-msg"),
++      expiry_cta: val("exit-timer-expiry-cta"),
++    };
++
++    fetcher.submit(
++      { intent: "save", popup: JSON.stringify(popup), timer: JSON.stringify(timer) },
++      { method: "POST" },
++    );
++  };
++
++  const p = data.popup;
++  const t = data.timer;
++
++  return (
++    <s-page heading="Exit Intent & Cart Timer">
++      {/* ─── POPUP SECTION ─── */}
++      <s-section heading="Exit Intent Popup">
++        <s-stack direction="block" gap="base">
++          <s-paragraph>
++            Shows a popup when a customer is about to abandon their cart — on desktop when the
++            mouse leaves the viewport, on mobile after idle time or a tab switch. Escalates the
++            message across up to 3 lifetime shows, then stops forever.
++          </s-paragraph>
++          <s-select id="exit-popup-enabled" label="Enable exit popup" value={p.enabled ? "1" : "0"}>
++            <s-option value="1">Enabled</s-option>
++            <s-option value="0">Disabled</s-option>
++          </s-select>
++        </s-stack>
++      </s-section>
++
++      <s-section heading="Trigger Thresholds">
++        <s-stack direction="block" gap="base">
++          <s-paragraph>
++            Fine-tune when the popup fires. Higher values = less aggressive = less annoying.
++          </s-paragraph>
++          <s-inline-grid columns="2" gap="base">
++            <s-number-field id="exit-idle-desktop" label="Desktop idle timeout (seconds)" min={5} value={String(p.idle_desktop)} />
++            <s-number-field id="exit-idle-mobile" label="Mobile idle timeout (seconds)" min={5} value={String(p.idle_mobile)} />
++            <s-number-field id="exit-min-pages" label="Min pages visited before trigger" min={1} value={String(p.min_pages)} />
++            <s-number-field id="exit-min-seconds" label="Min seconds on page before trigger" min={5} value={String(p.min_seconds)} />
++          </s-inline-grid>
++        </s-stack>
++      </s-section>
++
++      <s-section heading="Frequency Caps (Anti-Annoyance)">
++        <s-stack direction="block" gap="base">
++          <s-paragraph>
++            Controls how often a customer sees the popup. After the lifetime cap, it never shows again (30-day cookie).
++          </s-paragraph>
++          <s-inline-grid columns="3" gap="base">
++            <s-number-field id="exit-cooldown-hours" label="Cooldown between shows (hours)" min={1} value={String(p.cooldown_hours)} />
++            <s-number-field id="exit-dismiss-days" label="Cooldown after ✕ dismiss (days)" min={1} value={String(p.dismiss_days)} />
++            <s-number-field id="exit-max-lifetime" label="Max lifetime shows" min={1} value={String(p.max_lifetime)} />
++          </s-inline-grid>
++        </s-stack>
++      </s-section>
++
++      <s-section heading="Popup Escalation Tiers">
++        <s-stack direction="block" gap="large">
++          <s-paragraph>
++            Each show can have different copy. Show #1 is a gentle reminder, show #2 surfaces a
++            discount code, show #3 adds urgency. After the max, it stops permanently.
++          </s-paragraph>
++          {p.tiers.map((tier, i) => (
++            <s-box key={i} padding="base" borderWidth="base" borderRadius="base">
++              <s-stack direction="block" gap="base">
++                <s-heading>Show #{i + 1}</s-heading>
++                <s-text-field id={`exit-tier-heading-${i}`} label="Heading" value={tier.heading} />
++                <s-text-field id={`exit-tier-body-${i}`} label="Body text" value={tier.body} />
++                <s-text-field id={`exit-tier-discount-${i}`} label="Discount code to show (optional)" value={tier.discount} placeholder="FIRST200" />
++              </s-stack>
++            </s-box>
++          ))}
++        </s-stack>
++      </s-section>
++
++      <s-section heading="Popup Content">
++        <s-stack direction="block" gap="base">
++          <s-text-field id="exit-cta-text" label="CTA button text" value={p.cta_text} />
++          <s-select id="exit-gift-reminder" label="Show free gift reminder" value={p.show_gift_reminder ? "1" : "0"}>
++            <s-option value="1">Yes</s-option>
++            <s-option value="0">No</s-option>
++          </s-select>
++          <s-text-field id="exit-gift-reminder-text" label="Gift reminder text" value={p.gift_reminder_text} />
++        </s-stack>
++      </s-section>
++
++      {/* ─── TIMER SECTION ─── */}
++      <s-section heading="Cart Reserved Timer">
++        <s-stack direction="block" gap="base">
++          <s-paragraph>
++            Displays a countdown on the cart page / cart drawer, framed as "items reserved for you."
++            Creates urgency without actually clearing the cart — when the timer hits zero it shows a
++            soft "high demand" message and resets silently on any interaction.
++          </s-paragraph>
++          <s-select id="exit-timer-enabled" label="Enable cart timer" value={t.enabled ? "1" : "0"}>
++            <s-option value="1">Enabled</s-option>
++            <s-option value="0">Disabled</s-option>
++          </s-select>
++          <s-number-field id="exit-timer-duration" label="Timer duration (seconds)" min={60} value={String(t.duration_seconds)} />
++          <s-text-field id="exit-timer-label" label="Timer label" value={t.label} />
++          <s-text-field id="exit-timer-expiry-msg" label="Message when timer expires" value={t.expiry_message} />
++          <s-text-field id="exit-timer-expiry-cta" label="CTA after expiry" value={t.expiry_cta} />
++        </s-stack>
++      </s-section>
++
++      <s-section>
++        <s-button variant="primary" onClick={save}>
++          Save
++        </s-button>
++      </s-section>
++    </s-page>
++  );
++}
+diff --git a/app/routes/app.tsx b/app/routes/app.tsx
+index 6490478..9429f35 100644
+--- a/app/routes/app.tsx
++++ b/app/routes/app.tsx
+@@ -22,6 +22,7 @@ export default function App() {
+         <s-link href="/app/program">Loyalty Program</s-link>
+         <s-link href="/app/gift">Free Gift</s-link>
+         <s-link href="/app/bar">Progress Bar</s-link>
++        <s-link href="/app/exit">Exit Intent</s-link>
+         <s-link href="/app/customers">Customers</s-link>
+         <s-link href="/app/transactions">Transactions</s-link>
+       </s-app-nav>
+diff --git a/app/routes/proxy.exit.config.tsx b/app/routes/proxy.exit.config.tsx
+new file mode 100644
+index 0000000..30a96d4
+--- /dev/null
++++ b/app/routes/proxy.exit.config.tsx
+@@ -0,0 +1,29 @@
++import type { LoaderFunctionArgs } from "react-router";
++import { authenticate } from "../shopify.server";
++import { supabase } from "../supabase.server";
++
++export const loader = async ({ request }: LoaderFunctionArgs) => {
++  await authenticate.public.appProxy(request);
++
++  const { data } = await supabase
++    .from("loyalty_config")
++    .select("value")
++    .eq("key", "exit_config")
++    .maybeSingle();
++
++  let config: unknown = null;
++  if (data?.value) {
++    try {
++      config = JSON.parse(data.value);
++    } catch (e) {
++      config = null;
++    }
++  }
++
++  return new Response(JSON.stringify(config), {
++    headers: {
++      "Content-Type": "application/json",
++      "Cache-Control": "public, max-age=300",
++    },
++  });
++};
+diff --git a/extensions/exit-intent/assets/exit-intent.css b/extensions/exit-intent/assets/exit-intent.css
+new file mode 100644
+index 0000000..48b48b0
+--- /dev/null
++++ b/extensions/exit-intent/assets/exit-intent.css
+@@ -0,0 +1,285 @@
++/* ─── Exit Intent Popup ─── */
++.dei-overlay {
++  position: fixed;
++  inset: 0;
++  z-index: 999998;
++  background: rgba(0, 0, 0, 0.45);
++  backdrop-filter: blur(4px);
++  -webkit-backdrop-filter: blur(4px);
++  opacity: 0;
++  transition: opacity 0.3s ease;
++  pointer-events: none;
++}
++.dei-overlay.dei-show {
++  opacity: 1;
++  pointer-events: auto;
++}
++
++.dei-popup {
++  position: fixed;
++  z-index: 999999;
++  background: #fff;
++  border-radius: 16px 16px 0 0;
++  box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.18);
++  padding: 24px 20px 20px;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  max-height: 60vh;
++  transform: translateY(100%);
++  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
++}
++.dei-popup.dei-show {
++  transform: translateY(0);
++}
++
++/* Desktop: centered modal */
++@media (min-width: 768px) {
++  .dei-popup {
++    top: 50%;
++    left: 50%;
++    right: auto;
++    bottom: auto;
++    width: 420px;
++    max-height: 70vh;
++    border-radius: 16px;
++    transform: translate(-50%, -50%) scale(0.9);
++    opacity: 0;
++    transition: transform 0.3s ease, opacity 0.3s ease;
++  }
++  .dei-popup.dei-show {
++    transform: translate(-50%, -50%) scale(1);
++    opacity: 1;
++  }
++}
++
++/* Mobile grab handle */
++.dei-handle {
++  width: 36px;
++  height: 4px;
++  background: #d1d5db;
++  border-radius: 2px;
++  margin: 0 auto 16px;
++}
++@media (min-width: 768px) {
++  .dei-handle { display: none; }
++}
++
++.dei-close {
++  position: absolute;
++  top: 12px;
++  right: 12px;
++  width: 32px;
++  height: 32px;
++  border: none;
++  background: #f3f4f6;
++  border-radius: 50%;
++  font-size: 18px;
++  line-height: 1;
++  color: #6b7280;
++  cursor: pointer;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  transition: background 0.2s;
++}
++.dei-close:hover {
++  background: #e5e7eb;
++  color: #374151;
++}
++
++.dei-heading {
++  font-size: 20px;
++  font-weight: 700;
++  color: #111827;
++  margin: 0 0 8px;
++  padding-right: 36px;
++}
++
++.dei-body {
++  font-size: 15px;
++  color: #4b5563;
++  margin: 0 0 12px;
++  line-height: 1.5;
++}
++
++.dei-gift {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  background: #fef3c7;
++  border: 1px solid #fde68a;
++  border-radius: 10px;
++  padding: 10px 14px;
++  font-size: 14px;
++  color: #92400e;
++  margin-bottom: 12px;
++}
++.dei-gift svg {
++  width: 20px;
++  height: 20px;
++  flex-shrink: 0;
++}
++
++.dei-discount {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  background: #f0fdf4;
++  border: 1px solid #bbf7d0;
++  border-radius: 10px;
++  padding: 10px 14px;
++  font-size: 14px;
++  color: #166534;
++  margin-bottom: 12px;
++}
++.dei-discount-code {
++  font-weight: 700;
++  font-family: monospace;
++  font-size: 15px;
++  letter-spacing: 0.5px;
++  background: #dcfce7;
++  padding: 2px 8px;
++  border-radius: 4px;
++}
++
++.dei-cart-total {
++  font-size: 14px;
++  color: #6b7280;
++  margin-bottom: 16px;
++}
++.dei-cart-total strong {
++  color: #111827;
++}
++
++.dei-cta {
++  display: block;
++  width: 100%;
++  padding: 14px 24px;
++  background: linear-gradient(135deg, #f97316, #ea580c);
++  color: #fff;
++  font-size: 16px;
++  font-weight: 600;
++  border: none;
++  border-radius: 12px;
++  cursor: pointer;
++  text-align: center;
++  text-decoration: none;
++  transition: transform 0.15s, box-shadow 0.15s;
++}
++.dei-cta:hover {
++  transform: translateY(-1px);
++  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
++}
++.dei-cta:active {
++  transform: translateY(0);
++}
++
++.dei-secondary {
++  display: block;
++  width: 100%;
++  padding: 10px;
++  background: transparent;
++  color: #6b7280;
++  font-size: 14px;
++  border: none;
++  cursor: pointer;
++  text-align: center;
++  margin-top: 4px;
++}
++.dei-secondary:hover {
++  color: #374151;
++}
++
++
++/* ─── Cart Reserved Timer ─── */
++.dei-timer-bar {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  background: linear-gradient(90deg, #fff7ed, #fef3c7);
++  border: 1px solid #fed7aa;
++  border-radius: 10px;
++  padding: 10px 14px;
++  margin: 8px 0;
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
++  font-size: 14px;
++  color: #92400e;
++  animation: dei-timer-in 0.4s ease;
++}
++
++@keyframes dei-timer-in {
++  from { opacity: 0; transform: translateY(-8px); }
++  to { opacity: 1; transform: translateY(0); }
++}
++
++.dei-timer-icon {
++  flex-shrink: 0;
++  font-size: 16px;
++}
++
++.dei-timer-label {
++  flex: 1;
++  font-weight: 500;
++}
++
++.dei-timer-countdown {
++  font-weight: 700;
++  font-family: 'SF Mono', 'Fira Code', monospace;
++  font-size: 15px;
++  color: #c2410c;
++  min-width: 48px;
++  text-align: right;
++}
++
++.dei-timer-progress {
++  width: 100%;
++  height: 3px;
++  background: #fed7aa;
++  border-radius: 2px;
++  margin-top: 6px;
++  overflow: hidden;
++}
++.dei-timer-progress-fill {
++  height: 100%;
++  background: linear-gradient(90deg, #f97316, #ea580c);
++  border-radius: 2px;
++  transition: width 1s linear;
++}
++
++.dei-timer-expired {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  background: #fef2f2;
++  border: 1px solid #fecaca;
++  border-radius: 10px;
++  padding: 10px 14px;
++  margin: 8px 0;
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
++  font-size: 14px;
++  color: #991b1b;
++  animation: dei-timer-in 0.4s ease;
++}
++
++.dei-timer-expired-text {
++  flex: 1;
++}
++
++.dei-timer-expired-cta {
++  flex-shrink: 0;
++  padding: 6px 16px;
++  background: linear-gradient(135deg, #f97316, #ea580c);
++  color: #fff;
++  font-size: 13px;
++  font-weight: 600;
++  border: none;
++  border-radius: 8px;
++  cursor: pointer;
++  text-decoration: none;
++  white-space: nowrap;
++}
++.dei-timer-expired-cta:hover {
++  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
++}
+diff --git a/extensions/exit-intent/assets/exit-intent.js b/extensions/exit-intent/assets/exit-intent.js
+new file mode 100644
+index 0000000..8f8170c
+--- /dev/null
++++ b/extensions/exit-intent/assets/exit-intent.js
+@@ -0,0 +1,435 @@
++(function () {
++  "use strict";
++
++  var root = document.getElementById("dropy-exit-root");
++  if (!root) return;
++
++  // ─── Helpers ───
++  function xhr(url, cb) {
++    var x = new XMLHttpRequest();
++    x.open("GET", url, true);
++    x.onload = function () {
++      try { cb(null, JSON.parse(x.responseText)); } catch (e) { cb(e, null); }
++    };
++    x.onerror = function () { cb(new Error("network"), null); };
++    x.send();
++  }
++
++  function esc(s) {
++    return String(s == null ? "" : s)
++      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
++      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
++  }
++
++  function setCookie(name, val, days) {
++    var d = new Date();
++    d.setTime(d.getTime() + days * 86400000);
++    document.cookie = name + "=" + encodeURIComponent(val) +
++      ";expires=" + d.toUTCString() + ";path=/;SameSite=Lax";
++  }
++
++  function getCookie(name) {
++    var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
++    return m ? decodeURIComponent(m[1]) : null;
++  }
++
++  function isMobile() {
++    return window.innerWidth < 768;
++  }
++
++  function isCartPage() {
++    var p = window.location.pathname;
++    return p === "/cart" || p.indexOf("/cart") === 0;
++  }
++
++  function isCheckoutPage() {
++    return window.location.pathname.indexOf("/checkouts/") !== -1 ||
++           window.location.pathname.indexOf("/checkout") !== -1;
++  }
++
++  // ─── Fetch config + cart in parallel ───
++  var cfg = null;
++  var cart = null;
++  var ready = 0;
++
++  function onReady() {
++    ready++;
++    if (ready < 2) return;
++    if (!cfg) return;
++    if (cfg.popup && cfg.popup.enabled) initPopup();
++    if (cfg.timer && cfg.timer.enabled) initTimer();
++  }
++
++  xhr("/apps/rewards/exit/config", function (err, data) {
++    if (!err && data) cfg = data;
++    onReady();
++  });
++
++  xhr("/cart.js", function (err, data) {
++    if (!err && data) cart = data;
++    onReady();
++  });
++
++
++  // ═══════════════════════════════════════
++  //  EXIT INTENT POPUP
++  // ═══════════════════════════════════════
++  function initPopup() {
++    var p = cfg.popup;
++    if (isCheckoutPage()) return;
++
++    // ── Anti-annoyance checks ──
++
++    // 1. Already shown this session
++    if (sessionStorage.getItem("dei_shown")) return;
++
++    // 2. Cooldown between shows (cross-session)
++    var lastShown = getCookie("dei_last");
++    if (lastShown) {
++      var elapsed = (Date.now() - parseInt(lastShown, 10)) / 3600000;
++      if (elapsed < (p.cooldown_hours || 72)) return;
++    }
++
++    // 3. Dismissed recently
++    if (getCookie("dei_dismissed")) return;
++
++    // 4. Converted (just bought)
++    if (getCookie("dei_converted")) return;
++
++    // 5. Max lifetime shows reached
++    var showCount = parseInt(getCookie("dei_count") || "0", 10);
++    if (showCount >= (p.max_lifetime || 3)) return;
++
++    // 6. Page view count
++    var pageViews = parseInt(sessionStorage.getItem("dei_pages") || "0", 10) + 1;
++    sessionStorage.setItem("dei_pages", String(pageViews));
++    if (pageViews < (p.min_pages || 2)) return;
++
++    // 7. Cart must have items
++    if (!cart || !cart.item_count || cart.item_count < 1) return;
++
++    // ── Set thank-you page cookie (for conversion tracking) ──
++    if (window.location.pathname.indexOf("/thank_you") !== -1 ||
++        window.location.pathname.indexOf("/thank-you") !== -1 ||
++        window.location.pathname.indexOf("/orders/") !== -1) {
++      setCookie("dei_converted", "1", 30);
++      return;
++    }
++
++    // ── Build popup DOM ──
++    var tier = (Array.isArray(p.tiers) && p.tiers[showCount]) ? p.tiers[showCount] : p.tiers[0];
++    if (!tier) return;
++
++    var overlay = document.createElement("div");
++    overlay.className = "dei-overlay";
++
++    var popup = document.createElement("div");
++    popup.className = "dei-popup";
++
++    var cartTotal = cart.total_price ? "₹" + (cart.total_price / 100).toLocaleString("en-IN") : "";
++
++    var html = '<div class="dei-handle"></div>' +
++      '<button class="dei-close" aria-label="Close">&times;</button>' +
++      '<h2 class="dei-heading">' + esc(tier.heading) + '</h2>' +
++      '<p class="dei-body">' + esc(tier.body) + '</p>';
++
++    // Gift reminder
++    if (p.show_gift_reminder && p.gift_reminder_text) {
++      html += '<div class="dei-gift">' +
++        '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 7h-2.2c.13-.31.2-.65.2-1a3 3 0 0 0-5.2-2.05L12 4.9l-.8-.95A3 3 0 0 0 6 6c0 .35.07.69.2 1H4a2 2 0 0 0-2 2v2h20V9a2 2 0 0 0-2-2Zm-9-1a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm6 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM3 13v6a2 2 0 0 0 2 2h6v-8H3Zm10 8h6a2 2 0 0 0 2-2v-6h-8v8Z"/></svg>' +
++        '<span>' + esc(p.gift_reminder_text) + '</span>' +
++        '</div>';
++    }
++
++    // Discount code
++    if (tier.discount) {
++      html += '<div class="dei-discount">' +
++        '<span>Use code </span>' +
++        '<span class="dei-discount-code">' + esc(tier.discount) + '</span>' +
++        '</div>';
++    }
++
++    // Cart total
++    if (cartTotal) {
++      html += '<p class="dei-cart-total">Cart total: <strong>' + cartTotal + '</strong> (' + cart.item_count + ' item' + (cart.item_count > 1 ? 's' : '') + ')</p>';
++    }
++
++    // CTA
++    html += '<a class="dei-cta" href="/checkout">' + esc(p.cta_text || "Complete My Order") + '</a>';
++    html += '<button class="dei-secondary">Continue Shopping</button>';
++
++    popup.innerHTML = html;
++
++    document.body.appendChild(overlay);
++    document.body.appendChild(popup);
++
++    // ── Show / Hide logic ──
++    var shown = false;
++
++    function showPopup() {
++      if (shown) return;
++      shown = true;
++
++      // Record show
++      sessionStorage.setItem("dei_shown", "1");
++      setCookie("dei_last", String(Date.now()), 90);
++      setCookie("dei_count", String(showCount + 1), 365);
++
++      // Animate in
++      requestAnimationFrame(function () {
++        overlay.classList.add("dei-show");
++        popup.classList.add("dei-show");
++      });
++    }
++
++    function hidePopup(wasDismiss) {
++      overlay.classList.remove("dei-show");
++      popup.classList.remove("dei-show");
++      teardown();
++
++      if (wasDismiss) {
++        setCookie("dei_dismissed", "1", p.dismiss_days || 7);
++      }
++    }
++
++    // Close handlers
++    popup.querySelector(".dei-close").addEventListener("click", function () { hidePopup(true); });
++    popup.querySelector(".dei-secondary").addEventListener("click", function () { hidePopup(false); });
++    overlay.addEventListener("click", function () { hidePopup(true); });
++
++    // ── Triggers ──
++    var idleTimer = null;
++    var pageTimer = null;
++    var minSecondsMet = false;
++
++    // Wait min_seconds before arming triggers
++    pageTimer = setTimeout(function () {
++      minSecondsMet = true;
++      armTriggers();
++    }, (p.min_seconds || 30) * 1000);
++
++    function armTriggers() {
++      if (!minSecondsMet) return;
++
++      // Desktop: mouseleave from viewport top
++      if (!isMobile()) {
++        document.addEventListener("mouseleave", onMouseLeave);
++      }
++
++      // Mobile + Desktop: idle timer
++      startIdleTimer();
++
++      // Both: tab switch / app switch
++      document.addEventListener("visibilitychange", onVisChange);
++    }
++
++    function onMouseLeave(e) {
++      if (e.clientY <= 0) {
++        showPopup();
++      }
++    }
++
++    function onVisChange() {
++      if (document.hidden && minSecondsMet) {
++        showPopup();
++      }
++    }
++
++    function startIdleTimer() {
++      clearIdleTimer();
++      var timeout = isMobile() ? (p.idle_mobile || 20) : (p.idle_desktop || 30);
++      idleTimer = setTimeout(function () {
++        showPopup();
++      }, timeout * 1000);
++    }
++
++    function clearIdleTimer() {
++      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
++    }
++
++    // Reset idle timer on user interaction
++    var EVENTS = ["mousemove", "touchstart", "scroll", "keydown", "click"];
++    function onActivity() {
++      if (minSecondsMet && !shown) {
++        startIdleTimer();
++      }
++    }
++    EVENTS.forEach(function (e) { document.addEventListener(e, onActivity, { passive: true }); });
++
++    function teardown() {
++      clearIdleTimer();
++      if (pageTimer) clearTimeout(pageTimer);
++      document.removeEventListener("mouseleave", onMouseLeave);
++      document.removeEventListener("visibilitychange", onVisChange);
++      EVENTS.forEach(function (e) { document.removeEventListener(e, onActivity); });
++    }
++  }
++
++
++  // ═══════════════════════════════════════
++  //  CART RESERVED TIMER
++  // ═══════════════════════════════════════
++  function initTimer() {
++    var t = cfg.timer;
++    if (!cart || !cart.item_count || cart.item_count < 1) return;
++    if (isCheckoutPage()) return;
++
++    // Only show on cart-related contexts
++    // Inject into: cart page, and any cart drawer that has a known container
++    var containers = [];
++
++    // Cart page: look for common cart form containers
++    if (isCartPage()) {
++      var cartForm = document.querySelector("form[action='/cart']") ||
++                     document.querySelector(".cart") ||
++                     document.querySelector("[data-cart]") ||
++                     document.querySelector("#cart") ||
++                     document.querySelector("#MainContent");
++      if (cartForm) containers.push(cartForm);
++    }
++
++    // Cart drawer: look for common drawer selectors (Maximize theme + common patterns)
++    var drawerSelectors = [
++      ".cart-drawer__body",
++      ".cart-drawer__inner",
++      "[data-cart-drawer]",
++      "#cart-drawer",
++      ".drawer__inner",
++      ".js-drawer__inner",
++      ".side-cart__body",
++      ".ajaxcart__body"
++    ];
++    drawerSelectors.forEach(function (sel) {
++      var el = document.querySelector(sel);
++      if (el) containers.push(el);
++    });
++
++    if (!containers.length) {
++      // Fallback: try to inject after first found cart total/subtotal element
++      var subtotal = document.querySelector(".cart__subtotal, .cart-subtotal, [data-cart-subtotal]");
++      if (subtotal && subtotal.parentElement) containers.push(subtotal.parentElement);
++    }
++
++    if (!containers.length) return;
++
++    // Timer state
++    var duration = t.duration_seconds || 900;
++    var storageKey = "dei_timer_start";
++    var startTime = parseInt(sessionStorage.getItem(storageKey) || "0", 10);
++
++    if (!startTime) {
++      startTime = Math.floor(Date.now() / 1000);
++      sessionStorage.setItem(storageKey, String(startTime));
++    }
++
++    var expired = false;
++    var timerEls = [];
++
++    // Build timer bar for each container
++    containers.forEach(function (container) {
++      var bar = document.createElement("div");
++      bar.className = "dei-timer-bar";
++      bar.innerHTML =
++        '<span class="dei-timer-icon">🔒</span>' +
++        '<span class="dei-timer-label">' + esc(t.label || "Items reserved for you") + '</span>' +
++        '<span class="dei-timer-countdown">--:--</span>' +
++        '<div class="dei-timer-progress"><div class="dei-timer-progress-fill" style="width:100%"></div></div>';
++
++      // Insert at top of container
++      if (container.firstChild) {
++        container.insertBefore(bar, container.firstChild);
++      } else {
++        container.appendChild(bar);
++      }
++      timerEls.push(bar);
++    });
++
++    // Tick every second
++    function tick() {
++      var now = Math.floor(Date.now() / 1000);
++      var elapsed = now - startTime;
++      var remaining = Math.max(0, duration - elapsed);
++
++      if (remaining <= 0 && !expired) {
++        expired = true;
++        showExpired();
++        return;
++      }
++
++      if (expired) return;
++
++      var mins = Math.floor(remaining / 60);
++      var secs = remaining % 60;
++      var display = mins + ":" + (secs < 10 ? "0" : "") + secs;
++      var pct = (remaining / duration) * 100;
++
++      timerEls.forEach(function (bar) {
++        var countdown = bar.querySelector(".dei-timer-countdown");
++        var fill = bar.querySelector(".dei-timer-progress-fill");
++        if (countdown) countdown.textContent = display;
++        if (fill) fill.style.width = pct + "%";
++      });
++    }
++
++    function showExpired() {
++      timerEls.forEach(function (bar) {
++        var expiredEl = document.createElement("div");
++        expiredEl.className = "dei-timer-expired";
++        expiredEl.innerHTML =
++          '<span class="dei-timer-expired-text">' + esc(t.expiry_message || "High demand — items may sell out!") + '</span>' +
++          '<a class="dei-timer-expired-cta" href="/checkout">' + esc(t.expiry_cta || "Checkout Now") + '</a>';
++        bar.parentNode.replaceChild(expiredEl, bar);
++      });
++
++      // Silent reset: on any interaction, restart timer after a delay
++      function onInteract() {
++        document.removeEventListener("click", onInteract);
++        document.removeEventListener("touchstart", onInteract);
++        setTimeout(function () {
++          startTime = Math.floor(Date.now() / 1000);
++          sessionStorage.setItem(storageKey, String(startTime));
++          expired = false;
++          // Reinit on next page nav (SPA) or reload
++        }, 3000);
++      }
++      document.addEventListener("click", onInteract, { passive: true, once: true });
++      document.addEventListener("touchstart", onInteract, { passive: true, once: true });
++    }
++
++    // Reset timer on add-to-cart (means they're still shopping)
++    function watchCartChanges() {
++      // Listen for Shopify's cart change event
++      document.addEventListener("cart:change", resetTimer);
++      // Also intercept XHR to /cart/add
++      var origOpen = XMLHttpRequest.prototype.open;
++      XMLHttpRequest.prototype.open = function (method, url) {
++        if (typeof url === "string" && url.indexOf("/cart/add") !== -1) {
++          this.addEventListener("load", function () {
++            resetTimer();
++          });
++        }
++        return origOpen.apply(this, arguments);
++      };
++    }
++
++    function resetTimer() {
++      startTime = Math.floor(Date.now() / 1000);
++      sessionStorage.setItem(storageKey, String(startTime));
++      expired = false;
++    }
++
++    watchCartChanges();
++    tick();
++    setInterval(tick, 1000);
++  }
++
++
++  // ─── Thank-you page: set converted cookie ───
++  if (window.location.pathname.indexOf("/thank_you") !== -1 ||
++      window.location.pathname.indexOf("/thank-you") !== -1) {
++    setCookie("dei_converted", "1", 30);
++    // Clear timer
++    sessionStorage.removeItem("dei_timer_start");
++  }
++
++})();
+diff --git a/extensions/exit-intent/blocks/exit-intent.liquid b/extensions/exit-intent/blocks/exit-intent.liquid
+new file mode 100644
+index 0000000..1c2c594
+--- /dev/null
++++ b/extensions/exit-intent/blocks/exit-intent.liquid
+@@ -0,0 +1,15 @@
++<div
++  id="dropy-exit-root"
++  data-shop="{{ shop.permanent_domain }}"
++  style="display:none"
++></div>
++{{ 'exit-intent.css' | asset_url | stylesheet_tag }}
++<script src="{{ 'exit-intent.js' | asset_url }}" defer></script>
++
++{% schema %}
++{
++  "name": "Dropy Exit Intent",
++  "target": "body",
++  "settings": []
++}
++{% endschema %}
+diff --git a/extensions/exit-intent/locales/en.default.json b/extensions/exit-intent/locales/en.default.json
+new file mode 100644
+index 0000000..c974827
+--- /dev/null
++++ b/extensions/exit-intent/locales/en.default.json
+@@ -0,0 +1,4 @@
++{
++  "name": "Dropy Exit Intent & Cart Timer",
++  "description": "Exit-intent popup and cart reserved timer to reduce cart abandonment."
++}
+diff --git a/extensions/exit-intent/shopify.extension.toml b/extensions/exit-intent/shopify.extension.toml
+new file mode 100644
+index 0000000..8e1620e
+--- /dev/null
++++ b/extensions/exit-intent/shopify.extension.toml
+@@ -0,0 +1,2 @@
++name = "exit-intent"
++type = "theme"
+-- 
+2.43.0
+

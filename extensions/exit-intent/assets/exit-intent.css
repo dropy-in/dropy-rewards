@@ -1,0 +1,285 @@
+/* ─── Exit Intent Popup ─── */
+.dei-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999998;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.dei-overlay.dei-show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dei-popup {
+  position: fixed;
+  z-index: 999999;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.18);
+  padding: 24px 20px 20px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 60vh;
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.dei-popup.dei-show {
+  transform: translateY(0);
+}
+
+/* Desktop: centered modal */
+@media (min-width: 768px) {
+  .dei-popup {
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    width: 420px;
+    max-height: 70vh;
+    border-radius: 16px;
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  .dei-popup.dei-show {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Mobile grab handle */
+.dei-handle {
+  width: 36px;
+  height: 4px;
+  background: #d1d5db;
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+@media (min-width: 768px) {
+  .dei-handle { display: none; }
+}
+
+.dei-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.dei-close:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.dei-heading {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 8px;
+  padding-right: 36px;
+}
+
+.dei-body {
+  font-size: 15px;
+  color: #4b5563;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.dei-gift {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+.dei-gift svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.dei-discount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #166534;
+  margin-bottom: 12px;
+}
+.dei-discount-code {
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  background: #dcfce7;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.dei-cart-total {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+.dei-cart-total strong {
+  color: #111827;
+}
+
+.dei-cta {
+  display: block;
+  width: 100%;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.dei-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+}
+.dei-cta:active {
+  transform: translateY(0);
+}
+
+.dei-secondary {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  margin-top: 4px;
+}
+.dei-secondary:hover {
+  color: #374151;
+}
+
+
+/* ─── Cart Reserved Timer ─── */
+.dei-timer-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(90deg, #fff7ed, #fef3c7);
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: #92400e;
+  animation: dei-timer-in 0.4s ease;
+}
+
+@keyframes dei-timer-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dei-timer-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.dei-timer-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.dei-timer-countdown {
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 15px;
+  color: #c2410c;
+  min-width: 48px;
+  text-align: right;
+}
+
+.dei-timer-progress {
+  width: 100%;
+  height: 3px;
+  background: #fed7aa;
+  border-radius: 2px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+.dei-timer-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f97316, #ea580c);
+  border-radius: 2px;
+  transition: width 1s linear;
+}
+
+.dei-timer-expired {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: #991b1b;
+  animation: dei-timer-in 0.4s ease;
+}
+
+.dei-timer-expired-text {
+  flex: 1;
+}
+
+.dei-timer-expired-cta {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.dei-timer-expired-cta:hover {
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+}
