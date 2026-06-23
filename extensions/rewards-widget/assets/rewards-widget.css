@@ -1451,3 +1451,21 @@
 }
 .dw-header-icon svg { width: 24px; height: 24px; }
 .dw-header-icon .dw-badge { top: -4px; right: 0; }
+
+/* ── Header heart: filled red + gentle heartbeat ── */
+.dw-header-icon .dw-hdr-heart {
+  display: block;
+  transform-origin: center;
+  animation: dw-heartbeat 2.2s ease-in-out infinite;
+}
+@keyframes dw-heartbeat {
+  0%, 100% { transform: scale(1); }
+  10% { transform: scale(1.18); }
+  20% { transform: scale(1); }
+  30% { transform: scale(1.12); }
+  40% { transform: scale(1); }
+}
+.dw-header-icon:hover .dw-hdr-heart { animation-duration: 0.9s; }
+@media (prefers-reduced-motion: reduce) {
+  .dw-header-icon .dw-hdr-heart { animation: none; }
+}

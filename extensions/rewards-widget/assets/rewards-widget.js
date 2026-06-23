@@ -1120,8 +1120,8 @@
     return (
       '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">' +
       (filled
-        ? '<path fill="#ef4444" d="M12 21s-7.5-4.6-10-9.2C.6 8.5 2 5 5.2 5c1.9 0 3.2 1 3.8 2 .6-1 1.9-2 3.8-2C16 5 17.4 8.5 16 11.8 13.5 16.4 12 21 12 21z"/>'
-        : '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 20s-6.8-4.2-9.2-8.4C1.6 9 2.7 6 5.4 6c1.7 0 2.9.9 3.6 2 .7-1.1 1.9-2 3.6-2 2.7 0 3.8 3 2.6 5.6C18.8 15.8 12 20 12 20z"/>') +
+        ? '<path fill="#ef4444" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>'
+        : '<path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M12 20.1l-1.05-.95C6.14 14.78 3 11.94 3 8.5 3 5.96 5.04 4 7.5 4c1.55 0 3.04.77 3.95 1.98L12 6.6l.55-.62C13.46 4.77 14.95 4 16.5 4 18.96 4 21 5.96 21 8.5c0 3.44-3.14 6.28-7.95 10.65L12 20.1z"/>') +
       "</svg>"
     );
   }
@@ -1214,30 +1214,28 @@
 
   // ---- inject hearts onto collection / grid product cards ----
   function injectCards() {
-    // Maximize theme: card image wrapper is .product-card__image-wrapper (already position:relative)
+    // Maximize theme: one heart per card, anchored in the image wrapper
     var wraps = document.querySelectorAll(".product-card__image-wrapper");
     wraps.forEach(function (wrap) {
-      // mark the whole card so the fallback never double-injects
+      if (wrap.getAttribute("data-dw") === "done" || wrap.querySelector(".dw-heart")) return;
       var card = wrap.closest(".product-card__wrapper, .grid-item") || wrap;
-      if (card.getAttribute("data-dw") === "done" || card.querySelector(".dw-heart")) return;
       var link = wrap.querySelector('a[href*="/products/"]') ||
                  card.querySelector('a[href*="/products/"]');
       var handle = link ? handleFromUrl(link.getAttribute("href")) : null;
       if (!handle) return;
-      card.setAttribute("data-dw", "done");
+      wrap.setAttribute("data-dw", "done");
       if (getComputedStyle(wrap).position === "static") wrap.style.position = "relative";
       wrap.appendChild(makeHeart(handle, "card"));
     });
 
-    // Fallback ONLY for sections with no .product-card__image-wrapper
+    // Fallback ONLY for non-Maximize sections (no .product-card__image-wrapper anywhere on page)
+    if (document.querySelector(".product-card__image-wrapper")) return;
     var links = document.querySelectorAll('a[href*="/products/"]');
     links.forEach(function (a) {
       if (a.closest('[class*="cart-drawer"], [class*="cart-item"]')) return;
-      var card = a.closest('.product-card__wrapper, .grid-item, .card, [class*="product-card"]');
-      if (!card) return;
-      if (card.getAttribute("data-dw") === "done") return;
-      if (card.querySelector(".dw-heart")) return;
-      if (card.querySelector(".product-card__image-wrapper")) return;
+      // only match true card CONTAINERS, never title/price/sub elements
+      var card = a.closest('.card, .grid__item, li.grid__item, .product-item, [class*="card-wrapper"]');
+      if (!card || card.getAttribute("data-dw") === "done" || card.querySelector(".dw-heart")) return;
       var handle = handleFromUrl(a.getAttribute("href"));
       if (!handle) return;
       card.setAttribute("data-dw", "done");
@@ -1282,7 +1280,11 @@
         a.href = "/pages/wishlist";
         a.className = "dw-header-icon";
         a.setAttribute("aria-label", "Wishlist");
-        a.innerHTML = heartSVG(false) + '<span class="dw-badge" style="display:none">0</span>';
+        a.innerHTML =
+          '<svg class="dw-hdr-heart" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">' +
+          '<path fill="#ef4444" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>' +
+          '</svg>' +
+          '<span class="dw-badge" style="display:none">0</span>';
         ref.parentNode.insertBefore(a, ref);
       }
     }
@@ -1421,18 +1423,30 @@
     refresh();
     hydrate(function () { refresh(); renderPage(); });
 
-    // re-scan when the DOM changes (infinite scroll, quick-view, filters)
-    var pending = null;
-    var mo = new MutationObserver(function () {
-      clearTimeout(pending);
-      pending = setTimeout(function () {
-        injectCards();
-        injectPDP();
-        injectHeader();
-        refresh();
-      }, 300);
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
+    // Re-scan ONLY the product grid (not whole body) — avoids scroll jank.
+    // Scope to the grid container; fall back to body only if grid not found.
+    var target =
+      document.getElementById("ProductGridContainer") ||
+      document.querySelector('[class*="grid-layout"], .anm-reveal-container') ||
+      null;
+
+    if (target) {
+      var pending = null;
+      var mo = new MutationObserver(function () {
+        clearTimeout(pending);
+        pending = setTimeout(function () {
+          injectCards();
+          refresh();
+        }, 500);
+      });
+      mo.observe(target, { childList: true, subtree: true });
+    }
+
+    // Header/PDP only need one extra check after late-loading theme JS — no observer.
+    setTimeout(function () { injectHeader(); injectPDP(); injectCards(); refresh(); }, 1200);
+
+    // Re-check on browser back/forward (bfcache) and page show
+    window.addEventListener("pageshow", function () { refresh(); });
   }
 
   if (document.readyState === "loading") {
