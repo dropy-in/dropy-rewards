@@ -326,7 +326,7 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14, color: "#1f2937" }}>{c.name}</div>
                 <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                  {c.email || "—"}{c.orders ? ` · ${c.orders} order${c.orders === 1 ? "" : "s"}` : ""}
+                  {c.email || "—"}{c.orders ? ` · ${c.orders} order${c.orders === 1 ? "" : "s"}` : ""}{c.location ? ` · 📍 ${c.location}` : ""}
                 </div>
               </div>
               <span style={{ background: "#f3f4f6", color: "#6b7280", fontWeight: 600, fontSize: 12, padding: "3px 10px", borderRadius: 99 }}>

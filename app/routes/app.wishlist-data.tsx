@@ -83,6 +83,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               displayName
               numberOfOrders
               defaultEmailAddress { emailAddress }
+              defaultAddress { city provinceCode country }
             }
           }
         }`,
@@ -93,11 +94,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       nodes.forEach((c: any) => {
         if (c && c.id) {
           const numId = c.id.split("/").pop();
+          const addr = c.defaultAddress;
+          const loc = [addr?.city, addr?.provinceCode, addr?.country].filter(Boolean).join(", ");
           customerMap[numId!] = {
             id: numId,
             name: c.displayName || "Unknown",
             email: c.defaultEmailAddress?.emailAddress || "",
             orders: c.numberOfOrders || 0,
+            location: loc || "",
           };
         }
       });
