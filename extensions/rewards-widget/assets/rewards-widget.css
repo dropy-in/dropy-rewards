@@ -1200,14 +1200,12 @@
   border-radius: 50%;
   cursor: pointer;
   color: #6b7280;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+  transition: transform 0.15s ease, color 0.15s ease;
   z-index: 5;
 }
-.dw-heart:hover { transform: scale(1.12); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }
+.dw-heart:hover { transform: scale(1.12); }
 .dw-heart:active { transform: scale(0.95); }
 .dw-heart.dw-on { color: #ef4444; }
 .dw-heart.dw-loading { opacity: 0.5; pointer-events: none; }

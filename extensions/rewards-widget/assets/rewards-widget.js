@@ -1432,12 +1432,27 @@
 
     if (target) {
       var pending = null;
-      var mo = new MutationObserver(function () {
+      var scrolling = false;
+      var scrollT = null;
+      window.addEventListener("scroll", function () {
+        scrolling = true;
+        clearTimeout(scrollT);
+        scrollT = setTimeout(function () { scrolling = false; }, 150);
+      }, { passive: true });
+
+      var mo = new MutationObserver(function (muts) {
+        var relevant = false;
+        for (var i = 0; i < muts.length; i++) {
+          if (muts[i].addedNodes && muts[i].addedNodes.length) { relevant = true; break; }
+        }
+        if (!relevant) return;
         clearTimeout(pending);
-        pending = setTimeout(function () {
+        function run() {
+          if (scrolling) { pending = setTimeout(run, 200); return; }
           injectCards();
           refresh();
-        }, 500);
+        }
+        pending = setTimeout(run, 600);
       });
       mo.observe(target, { childList: true, subtree: true });
     }
