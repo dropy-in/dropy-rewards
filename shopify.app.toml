@@ -6,7 +6,7 @@ application_url = "https://dropy-rewards.vercel.app"
 embedded = true
 
 [access_scopes]
-scopes = "read_orders,read_customers,write_discounts,read_store_credit_accounts,write_store_credit_account_transactions,read_metaobjects,write_metaobjects"
+scopes = "read_orders,read_customers,write_customers,write_discounts,read_store_credit_accounts,write_store_credit_account_transactions,read_metaobjects,write_metaobjects"
 
 [webhooks]
 api_version = "2026-07"
