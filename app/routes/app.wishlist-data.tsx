@@ -16,7 +16,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (error || !rows || !rows.length) {
     return Response.json({
       totalItems: 0, totalCustomers: 0, topProducts: [], customers: [], capped: false,
-      _debug: error ? String(error.message || error) : "no rows",
     });
   }
 
@@ -37,7 +36,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // 3. Hydrate — TWO separate queries to isolate failures
   const productMap: Record<string, any> = {};
   const customerMap: Record<string, any> = {};
-  let _debugHydration: any = {};
 
   // Hydrate products
   if (productIds.length) {
@@ -57,7 +55,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         { variables: { ids: productIds } },
       );
       const raw = await res.json();
-      _debugHydration.productRaw = { hasData: !!raw?.data, hasErrors: !!raw?.errors, errorMsg: raw?.errors?.[0]?.message };
       const nodes = raw?.data?.nodes || [];
       nodes.forEach((p: any) => {
         if (p && p.id) {
@@ -71,7 +68,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
       });
     } catch (e: any) {
-      _debugHydration.productError = String(e?.message || e);
+      /* product hydration failed */
     }
   }
 
@@ -92,7 +89,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         { variables: { ids: customerIds } },
       );
       const raw = await res.json();
-      _debugHydration.customerRaw = { hasData: !!raw?.data, hasErrors: !!raw?.errors, errorMsg: raw?.errors?.[0]?.message };
       const nodes = raw?.data?.nodes || [];
       nodes.forEach((c: any) => {
         if (c && c.id) {
@@ -106,7 +102,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
       });
     } catch (e: any) {
-      _debugHydration.customerError = String(e?.message || e);
+      /* customer hydration failed */
     }
   }
 
@@ -142,7 +138,5 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     topProducts,
     customers,
     capped,
-    _debugHydration,
-    _debugIds: { productIds: productIds.slice(0, 3), customerIds: customerIds.slice(0, 3) },
   });
 };

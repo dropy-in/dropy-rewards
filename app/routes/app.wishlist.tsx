@@ -298,13 +298,6 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
         </div>
       )}
 
-      {d._debugHydration && (
-        <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", color: "#0c4a6e", fontSize: 11, padding: "8px 12px", borderRadius: 8, marginBottom: 18, fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
-          Debug: {JSON.stringify(d._debugHydration, null, 2)}
-          {d._debugIds && <><br/>IDs: {JSON.stringify(d._debugIds, null, 2)}</>}
-        </div>
-      )}
-
       {/* Most wishlisted */}
       <div style={card}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>🔥 Most wishlisted products</div>
