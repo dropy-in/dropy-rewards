@@ -1,4 +1,5 @@
 import { authenticate } from "../shopify.server";
+import { supabase } from "../supabase.server";
 
 // POST /apps/rewards/wishlist/toggle
 // Body: { productId: "gid://shopify/Product/123", action: "add" | "remove" }
@@ -74,6 +75,23 @@ export const action = async ({ request }: { request: Request }) => {
     if (errs.length) return Response.json({ error: errs[0].message }, { status: 400 });
   } catch (e: any) {
     return Response.json({ error: String(e?.message || e) }, { status: 500 });
+  }
+
+  // Mirror to Supabase for the admin analytics tab (non-critical — never break the toggle)
+  try {
+    if (act === "add") {
+      await supabase
+        .from("wishlist_items")
+        .upsert([{ customer_id: customerId, product_id: productId }], { onConflict: "customer_id,product_id" });
+    } else {
+      await supabase
+        .from("wishlist_items")
+        .delete()
+        .eq("customer_id", customerId)
+        .eq("product_id", productId);
+    }
+  } catch (e) {
+    /* analytics mirror failed — ignore */
   }
 
   return Response.json({ loggedIn: true, items: next });
