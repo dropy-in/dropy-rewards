@@ -1427,3 +1427,27 @@
 }
 .dw-mobile-nav-item .dw-mnav-icon svg path { fill: #303030; }
 .dw-mobile-nav-item { text-decoration: none; color: inherit; }
+
+/* ── Mobile nav: make room for 5th item (reduce side padding) ── */
+#bottom-mobile-nav .flex.px-9 { padding-left: 1rem; padding-right: 1rem; }
+.dw-mobile-nav-item { min-width: 56px !important; text-decoration: none; color: inherit; }
+.dw-mnav-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.dw-mnav-icon svg { width: 24px; height: 24px; display: block; }
+.dw-badge--mnav {
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  font-size: 9px;
+}
+/* ── Desktop header heart: size + color to match neighbours ── */
+.dw-header-icon {
+  width: auto;
+  height: auto;
+  padding: 0 6px;
+  color: rgba(var(--color-heading, 48 48 48), 1);
+}
+.dw-header-icon svg { width: 24px; height: 24px; }
+.dw-header-icon .dw-badge { top: -4px; right: 0; }

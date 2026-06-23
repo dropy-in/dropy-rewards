@@ -1217,29 +1217,33 @@
     // Maximize theme: card image wrapper is .product-card__image-wrapper (already position:relative)
     var wraps = document.querySelectorAll(".product-card__image-wrapper");
     wraps.forEach(function (wrap) {
-      if (wrap.getAttribute("data-dw") === "done") return;
-      // find the product handle from a link inside this card
+      // mark the whole card so the fallback never double-injects
+      var card = wrap.closest(".product-card__wrapper, .grid-item") || wrap;
+      if (card.getAttribute("data-dw") === "done" || card.querySelector(".dw-heart")) return;
       var link = wrap.querySelector('a[href*="/products/"]') ||
-                 (wrap.closest(".product-card__wrapper, .grid-item") || document).querySelector('a[href*="/products/"]');
+                 card.querySelector('a[href*="/products/"]');
       var handle = link ? handleFromUrl(link.getAttribute("href")) : null;
       if (!handle) return;
-      wrap.setAttribute("data-dw", "done");
+      card.setAttribute("data-dw", "done");
       if (getComputedStyle(wrap).position === "static") wrap.style.position = "relative";
       wrap.appendChild(makeHeart(handle, "card"));
     });
 
-    // Fallback for any other themes / sections (What India's Buying etc.)
+    // Fallback ONLY for sections with no .product-card__image-wrapper
     var links = document.querySelectorAll('a[href*="/products/"]');
     links.forEach(function (a) {
       if (a.closest('[class*="cart-drawer"], [class*="cart-item"]')) return;
-      if (a.closest(".product-card__image-wrapper")) return; // handled above
+      var card = a.closest('.product-card__wrapper, .grid-item, .card, [class*="product-card"]');
+      if (!card) return;
+      if (card.getAttribute("data-dw") === "done") return;
+      if (card.querySelector(".dw-heart")) return;
+      if (card.querySelector(".product-card__image-wrapper")) return;
       var handle = handleFromUrl(a.getAttribute("href"));
       if (!handle) return;
-      var card = a.closest('.product-card__wrapper, .grid-item, .card, [class*="product-card"]');
-      if (!card || card.querySelector(".dw-heart") || card.getAttribute("data-dw") === "done") return;
       card.setAttribute("data-dw", "done");
-      if (getComputedStyle(card).position === "static") card.style.position = "relative";
-      card.appendChild(makeHeart(handle, "card"));
+      var imgBox = card.querySelector('[class*="image-wrapper"], [class*="image-container"], [class*="media"]') || card;
+      if (getComputedStyle(imgBox).position === "static") imgBox.style.position = "relative";
+      imgBox.appendChild(makeHeart(handle, "card"));
     });
   }
 
@@ -1287,7 +1291,6 @@
     if (!document.querySelector(".dw-mobile-nav-item")) {
       var navRow = document.querySelector("#bottom-mobile-nav .flex");
       if (navRow) {
-        // clone an existing item to inherit the theme's exact classes
         var sample = navRow.querySelector("a[aria-label]");
         var item = document.createElement("a");
         item.href = "/pages/wishlist";
@@ -1297,12 +1300,16 @@
         var sIcon = sample ? sample.querySelector(".icon") : null;
         if (sIcon) iconCls = sIcon.className;
         var sLabel = sample ? sample.querySelector("span:not(.icon):not([aria-hidden])") : null;
-        var labelCls = sLabel ? sLabel.className : "text-[11px] mt-0.5";
+        var labelCls = sLabel ? sLabel.className : "text-[11px]";
+        // outline heart matching the theme's 24px outline icons (stroke, no fill)
+        var navHeart =
+          '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="24" height="24">' +
+          '<path d="M12 20.25C12 20.25 3.75 15.5 3.75 9.6875C3.75 7.2 5.7 5.25 8.1875 5.25C9.7 5.25 11.05 6.0 12 7.2C12.95 6.0 14.3 5.25 15.8125 5.25C18.3 5.25 20.25 7.2 20.25 9.6875C20.25 15.5 12 20.25 12 20.25Z" stroke="#303030" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>';
         item.innerHTML =
-          '<span class="' + iconCls + ' dw-mnav-icon">' + heartSVG(false) +
+          '<span class="' + iconCls + ' dw-mnav-icon">' + navHeart +
           '<span class="dw-badge dw-badge--mnav" style="display:none">0</span></span>' +
           '<span class="' + labelCls + '">Wishlist</span>';
-        // insert before the last item (Account) so order is Home/Categories/Search/Wishlist/Account
         var items = navRow.querySelectorAll("a[aria-label]");
         var last = items[items.length - 1];
         if (last) navRow.insertBefore(item, last);
