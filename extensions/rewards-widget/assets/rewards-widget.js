@@ -1032,3 +1032,405 @@
   }
 
 })();
+
+/* ═══════════════════════════════════════════════════════════
+   DROPY WISHLIST  (hybrid: localStorage + customer metafield)
+   - Hearts on PDP, collection cards, and a header icon w/ badge
+   - Guests persist to localStorage; logged-in users sync to metafield
+   - /pages/wishlist renders client-side from localStorage
+   ═══════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+
+  var LS_KEY = "dropy_wishlist";
+  var PROXY = "/apps/rewards/wishlist";
+  var SYNC_FLAG = "dropy_wl_synced"; // session flag so we hydrate once per load
+
+  // ---- localStorage helpers (rich objects keyed by handle) ----
+  function load() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function save(arr) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(arr)); } catch (e) {}
+  }
+  function has(handle) { return load().some(function (i) { return i.handle === handle; }); }
+  function gidOf(handle) {
+    var f = load().filter(function (i) { return i.handle === handle; })[0];
+    return f ? f.id : null;
+  }
+  function count() { return load().length; }
+
+  function isLoggedIn() {
+    var root = document.getElementById("dropy-rewards-root");
+    return root && root.getAttribute("data-logged-in") === "1";
+  }
+  function accountUrl() {
+    var root = document.getElementById("dropy-rewards-root");
+    return (root && root.getAttribute("data-account-url")) || "/account";
+  }
+
+  // ---- tiny XHR (fetch is intercepted by sound scripts on dropy.in) ----
+  function post(path, payload, cb) {
+    try {
+      var x = new XMLHttpRequest();
+      x.open("POST", path, true);
+      x.setRequestHeader("Content-Type", "application/json");
+      x.onreadystatechange = function () {
+        if (x.readyState === 4) {
+          var d = null; try { d = JSON.parse(x.responseText); } catch (e) {}
+          cb(x.status >= 200 && x.status < 300 ? null : x.status, d);
+        }
+      };
+      x.send(JSON.stringify(payload));
+    } catch (e) { cb(e, null); }
+  }
+  function get(path, cb) {
+    try {
+      var x = new XMLHttpRequest();
+      x.open("GET", path, true);
+      x.onreadystatechange = function () {
+        if (x.readyState === 4) {
+          var d = null; try { d = JSON.parse(x.responseText); } catch (e) {}
+          cb(x.status >= 200 && x.status < 300 ? null : x.status, d);
+        }
+      };
+      x.send();
+    } catch (e) { cb(e, null); }
+  }
+
+  function fmtPrice(n) {
+    try {
+      return "₹" + Math.round(Number(n)).toLocaleString("en-IN");
+    } catch (e) { return "₹" + n; }
+  }
+
+  // ---- handle extraction from a /products/<handle> URL ----
+  function handleFromUrl(href) {
+    if (!href) return null;
+    var m = href.match(/\/products\/([a-z0-9\-_%]+)/i);
+    return m ? m[1].split("?")[0].split("#")[0] : null;
+  }
+
+  // ---- heart SVG ----
+  function heartSVG(filled) {
+    return (
+      '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">' +
+      (filled
+        ? '<path fill="#ef4444" d="M12 21s-7.5-4.6-10-9.2C.6 8.5 2 5 5.2 5c1.9 0 3.2 1 3.8 2 .6-1 1.9-2 3.8-2C16 5 17.4 8.5 16 11.8 13.5 16.4 12 21 12 21z"/>'
+        : '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 20s-6.8-4.2-9.2-8.4C1.6 9 2.7 6 5.4 6c1.7 0 2.9.9 3.6 2 .7-1.1 1.9-2 3.6-2 2.7 0 3.8 3 2.6 5.6C18.8 15.8 12 20 12 20z"/>') +
+      "</svg>"
+    );
+  }
+
+  // ---- refresh all heart visuals + header badge ----
+  function refresh() {
+    var hearts = document.querySelectorAll(".dw-heart[data-handle]");
+    hearts.forEach(function (h) {
+      var on = has(h.getAttribute("data-handle"));
+      h.classList.toggle("dw-on", on);
+      h.innerHTML = heartSVG(on);
+      h.setAttribute("aria-pressed", on ? "true" : "false");
+      h.setAttribute("aria-label", on ? "Remove from wishlist" : "Add to wishlist");
+    });
+    var badges = document.querySelectorAll(".dw-badge");
+    var c = count();
+    badges.forEach(function (b) {
+      b.textContent = c;
+      b.style.display = c > 0 ? "flex" : "none";
+    });
+  }
+
+  // ---- toggle one product by handle ----
+  function toggle(handle, btn) {
+    if (!handle) return;
+    if (has(handle)) {
+      // remove
+      var gid = gidOf(handle);
+      save(load().filter(function (i) { return i.handle !== handle; }));
+      refresh();
+      if (isLoggedIn() && gid) post(PROXY + "/toggle", { productId: gid, action: "remove" }, function () {});
+      flash(btn, "Removed");
+    } else {
+      // add — fetch product data so the wishlist page can render it
+      if (btn) btn.classList.add("dw-loading");
+      get("/products/" + handle + ".js", function (err, p) {
+        if (btn) btn.classList.remove("dw-loading");
+        if (err || !p || !p.id) { flash(btn, "Try again"); return; }
+        var gid = "gid://shopify/Product/" + p.id;
+        var img = (p.featured_image || (p.images && p.images[0]) || "");
+        if (img && img.indexOf("//") === 0) img = "https:" + img;
+        var item = {
+          id: gid,
+          handle: handle,
+          title: p.title || "",
+          url: p.url || "/products/" + handle,
+          image: img,
+          price: (p.price || 0) / 100,
+          compareAt: p.compare_at_price && p.compare_at_price > p.price ? p.compare_at_price / 100 : 0,
+          available: p.available !== false
+        };
+        var arr = load();
+        if (!arr.some(function (i) { return i.handle === handle; })) arr.push(item);
+        save(arr);
+        refresh();
+        if (isLoggedIn()) post(PROXY + "/toggle", { productId: gid, action: "add" }, function () {});
+        flash(btn, "Saved ♥");
+      });
+    }
+  }
+
+  // ---- little toast near a heart ----
+  function flash(btn, msg) {
+    if (!btn) return;
+    var t = document.createElement("span");
+    t.className = "dw-flash";
+    t.textContent = msg;
+    btn.appendChild(t);
+    setTimeout(function () { t.classList.add("dw-flash-show"); }, 10);
+    setTimeout(function () {
+      t.classList.remove("dw-flash-show");
+      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 250);
+    }, 1100);
+  }
+
+  // ---- build a heart button element ----
+  function makeHeart(handle, variant) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "dw-heart" + (variant ? " dw-heart--" + variant : "");
+    b.setAttribute("data-handle", handle);
+    b.innerHTML = heartSVG(false);
+    b.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggle(handle, b);
+    });
+    return b;
+  }
+
+  // ---- inject hearts onto collection / grid product cards ----
+  function injectCards() {
+    // Maximize theme: card image wrapper is .product-card__image-wrapper (already position:relative)
+    var wraps = document.querySelectorAll(".product-card__image-wrapper");
+    wraps.forEach(function (wrap) {
+      if (wrap.getAttribute("data-dw") === "done") return;
+      // find the product handle from a link inside this card
+      var link = wrap.querySelector('a[href*="/products/"]') ||
+                 (wrap.closest(".product-card__wrapper, .grid-item") || document).querySelector('a[href*="/products/"]');
+      var handle = link ? handleFromUrl(link.getAttribute("href")) : null;
+      if (!handle) return;
+      wrap.setAttribute("data-dw", "done");
+      if (getComputedStyle(wrap).position === "static") wrap.style.position = "relative";
+      wrap.appendChild(makeHeart(handle, "card"));
+    });
+
+    // Fallback for any other themes / sections (What India's Buying etc.)
+    var links = document.querySelectorAll('a[href*="/products/"]');
+    links.forEach(function (a) {
+      if (a.closest('[class*="cart-drawer"], [class*="cart-item"]')) return;
+      if (a.closest(".product-card__image-wrapper")) return; // handled above
+      var handle = handleFromUrl(a.getAttribute("href"));
+      if (!handle) return;
+      var card = a.closest('.product-card__wrapper, .grid-item, .card, [class*="product-card"]');
+      if (!card || card.querySelector(".dw-heart") || card.getAttribute("data-dw") === "done") return;
+      card.setAttribute("data-dw", "done");
+      if (getComputedStyle(card).position === "static") card.style.position = "relative";
+      card.appendChild(makeHeart(handle, "card"));
+    });
+  }
+
+  // ---- inject heart on the product (PDP) ----
+  function injectPDP() {
+    if (location.pathname.indexOf("/products/") === -1) return;
+    var handle = handleFromUrl(location.pathname);
+    if (!handle) return;
+    if (document.querySelector(".dw-heart--pdp")) return;
+    var anchor =
+      document.querySelector('product-form, form[action*="/cart/add"]') ||
+      document.querySelector('[class*="product-form"]') ||
+      document.querySelector('[class*="product__info"], [class*="product-info"]');
+    if (!anchor) return;
+    var wrap = document.createElement("div");
+    wrap.className = "dw-pdp-row";
+    var h = makeHeart(handle, "pdp");
+    var label = document.createElement("span");
+    label.className = "dw-pdp-label";
+    label.textContent = "Add to Wishlist";
+    wrap.appendChild(h);
+    wrap.appendChild(label);
+    label.addEventListener("click", function (e) { e.preventDefault(); toggle(handle, h); });
+    anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+  }
+
+  // ---- desktop header icon (before .dropy-credit) + mobile nav item ----
+  function injectHeader() {
+    // DESKTOP: insert before the store-credit icon
+    if (!document.querySelector(".dw-header-icon")) {
+      var credit = document.querySelector(".dropy-credit");
+      var cart = document.querySelector(".header-icon-cart, a[href*='/cart']");
+      var ref = credit || cart;
+      if (ref && ref.parentNode) {
+        var a = document.createElement("a");
+        a.href = "/pages/wishlist";
+        a.className = "dw-header-icon";
+        a.setAttribute("aria-label", "Wishlist");
+        a.innerHTML = heartSVG(false) + '<span class="dw-badge" style="display:none">0</span>';
+        ref.parentNode.insertBefore(a, ref);
+      }
+    }
+
+    // MOBILE: add a Wishlist item into the bottom nav, matching its markup
+    if (!document.querySelector(".dw-mobile-nav-item")) {
+      var navRow = document.querySelector("#bottom-mobile-nav .flex");
+      if (navRow) {
+        // clone an existing item to inherit the theme's exact classes
+        var sample = navRow.querySelector("a[aria-label]");
+        var item = document.createElement("a");
+        item.href = "/pages/wishlist";
+        item.className = (sample ? sample.className : "group flex flex-col items-center justify-center min-w-[64px] min-h-[44px] gap-0.5") + " dw-mobile-nav-item";
+        item.setAttribute("aria-label", "Wishlist");
+        var iconCls = "icon w-6 h-6";
+        var sIcon = sample ? sample.querySelector(".icon") : null;
+        if (sIcon) iconCls = sIcon.className;
+        var sLabel = sample ? sample.querySelector("span:not(.icon):not([aria-hidden])") : null;
+        var labelCls = sLabel ? sLabel.className : "text-[11px] mt-0.5";
+        item.innerHTML =
+          '<span class="' + iconCls + ' dw-mnav-icon">' + heartSVG(false) +
+          '<span class="dw-badge dw-badge--mnav" style="display:none">0</span></span>' +
+          '<span class="' + labelCls + '">Wishlist</span>';
+        // insert before the last item (Account) so order is Home/Categories/Search/Wishlist/Account
+        var items = navRow.querySelectorAll("a[aria-label]");
+        var last = items[items.length - 1];
+        if (last) navRow.insertBefore(item, last);
+        else navRow.appendChild(item);
+      }
+    }
+  }
+
+  // ---- render the dedicated wishlist page ----
+  function renderPage() {
+    var root = document.getElementById("dropy-wishlist-root");
+    if (!root) return;
+    var items = load();
+    if (!items.length) {
+      root.innerHTML =
+        '<div class="dw-empty">' +
+        '<div class="dw-empty-heart">' + heartSVG(false) + "</div>" +
+        "<h3>Your wishlist is empty</h3>" +
+        "<p>Tap the heart on any product to save it here.</p>" +
+        '<a class="dw-empty-cta" href="/collections/all">Start shopping</a>' +
+        "</div>";
+      return;
+    }
+    var html = '<div class="dw-grid">';
+    items.forEach(function (i) {
+      var disc =
+        i.compareAt && i.compareAt > i.price
+          ? '<span class="dw-card-cmp">' + fmtPrice(i.compareAt) + "</span>"
+          : "";
+      html +=
+        '<div class="dw-card" data-handle="' + i.handle + '">' +
+        '<button type="button" class="dw-card-remove" data-handle="' + i.handle + '" aria-label="Remove">×</button>' +
+        '<a class="dw-card-img" href="' + i.url + '">' +
+        (i.image ? '<img src="' + i.image + '" alt="" loading="lazy">' : '<div class="dw-card-noimg"></div>') +
+        "</a>" +
+        '<a class="dw-card-title" href="' + i.url + '">' + i.title + "</a>" +
+        '<div class="dw-card-price">' + fmtPrice(i.price) + " " + disc + "</div>" +
+        (i.available
+          ? '<button type="button" class="dw-card-atc" data-handle="' + i.handle + '">Add to cart</button>'
+          : '<button type="button" class="dw-card-atc dw-soldout" disabled>Sold out</button>') +
+        "</div>";
+    });
+    html += "</div>";
+    root.innerHTML = html;
+
+    // remove buttons
+    root.querySelectorAll(".dw-card-remove").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var handle = b.getAttribute("data-handle");
+        var gid = gidOf(handle);
+        save(load().filter(function (i) { return i.handle !== handle; }));
+        if (isLoggedIn() && gid) post(PROXY + "/toggle", { productId: gid, action: "remove" }, function () {});
+        renderPage();
+        refresh();
+      });
+    });
+    // add-to-cart buttons
+    root.querySelectorAll(".dw-card-atc:not(.dw-soldout)").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var handle = b.getAttribute("data-handle");
+        b.textContent = "Adding…";
+        get("/products/" + handle + ".js", function (err, p) {
+          if (err || !p || !p.variants || !p.variants.length) { b.textContent = "Try again"; return; }
+          var vid = (p.variants.filter(function (v) { return v.available; })[0] || p.variants[0]).id;
+          post("/cart/add.js", { items: [{ id: vid, quantity: 1 }] }, function (e2) {
+            if (e2) { b.textContent = "Try again"; return; }
+            b.textContent = "Added ✓";
+            document.dispatchEvent(new CustomEvent("dropy:cart-updated"));
+            setTimeout(function () { b.textContent = "Add to cart"; }, 1500);
+          });
+        });
+      });
+    });
+  }
+
+  // ---- one-time hydrate from metafield (cross-device + guest→login merge) ----
+  function hydrate(done) {
+    if (!isLoggedIn()) { done(); return; }
+    if (sessionStorage.getItem(SYNC_FLAG)) { done(); return; }
+    sessionStorage.setItem(SYNC_FLAG, "1");
+    get(PROXY + "/list", function (err, res) {
+      if (err || !res || !res.items) { done(); return; }
+      var local = load();
+      var byHandle = {};
+      local.forEach(function (i) { byHandle[i.handle] = i; });
+      // merge server items into local (server has rich data too)
+      res.items.forEach(function (s) { byHandle[s.handle] = s; });
+      var merged = Object.keys(byHandle).map(function (k) { return byHandle[k]; });
+      save(merged);
+
+      // push any local-only (guest-saved) GIDs up to the metafield
+      var serverHandles = {};
+      res.items.forEach(function (s) { serverHandles[s.handle] = 1; });
+      local.forEach(function (i) {
+        if (!serverHandles[i.handle] && i.id) {
+          post(PROXY + "/toggle", { productId: i.id, action: "add" }, function () {});
+        }
+      });
+      done();
+    });
+  }
+
+  // ---- init ----
+  function init() {
+    injectHeader();
+    injectPDP();
+    injectCards();
+    renderPage();
+    refresh();
+    hydrate(function () { refresh(); renderPage(); });
+
+    // re-scan when the DOM changes (infinite scroll, quick-view, filters)
+    var pending = null;
+    var mo = new MutationObserver(function () {
+      clearTimeout(pending);
+      pending = setTimeout(function () {
+        injectCards();
+        injectPDP();
+        injectHeader();
+        refresh();
+      }, 300);
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
