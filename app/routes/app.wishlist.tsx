@@ -250,6 +250,7 @@ function Toggle({ on, set }: { on: boolean; set: (v: boolean) => void }) {
 function WishlistDataView({ fetcher }: { fetcher: any }) {
   const loading = fetcher.state === "loading";
   const d = fetcher.data;
+  const [search, setSearch] = useState("");
 
   if (loading || !d) {
     return (
@@ -267,147 +268,173 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
         <div style={{ fontSize: 48, marginBottom: 12 }}>💝</div>
         <div style={{ fontSize: 17, fontWeight: 700, color: "#1f2937", marginBottom: 6 }}>No wishlist data yet</div>
         <div style={{ fontSize: 14, color: "#6b7280", maxWidth: 340, margin: "0 auto" }}>
-          Once logged-in customers start saving products, their wishlists and insights will appear here.
+          Once logged-in customers start saving products, their wishlists will appear here.
         </div>
       </div>
     );
   }
 
-  const medals = ["🥇", "🥈", "🥉"];
+  // flatten into rows: one row per customer×product
+  const rows: any[] = [];
+  (d.customers || []).forEach((c: any) => {
+    (c.items || []).forEach((it: any, idx: number) => {
+      rows.push({
+        customerName: c.name,
+        customerEmail: c.email,
+        location: c.location || "",
+        orders: c.orders || 0,
+        productTitle: it.title,
+        productImage: it.image,
+        productUrl: it.url,
+        addedAt: c.lastAdded,
+        itemCount: c.count,
+        isFirst: idx === 0,
+        customerId: c.id,
+      });
+    });
+  });
 
-  function initials(name: string) {
-    return name.split(" ").map((w: string) => w[0] || "").slice(0, 2).join("").toUpperCase();
-  }
+  const q = search.toLowerCase();
+  const filtered = q
+    ? rows.filter((r) =>
+        r.customerName.toLowerCase().includes(q) ||
+        r.customerEmail.toLowerCase().includes(q) ||
+        r.productTitle.toLowerCase().includes(q) ||
+        r.location.toLowerCase().includes(q)
+      )
+    : rows;
 
-  const colors = ["#fb923c", "#8b5cf6", "#06b6d4", "#ec4899", "#10b981", "#ef4444", "#f59e0b"];
-  function avatarColor(name: string) {
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-    return colors[Math.abs(h) % colors.length];
-  }
+  const th: React.CSSProperties = {
+    padding: "10px 12px", fontSize: 12, fontWeight: 600, color: "#6b7280", textAlign: "left",
+    borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em",
+  };
+  const td: React.CSSProperties = {
+    padding: "10px 12px", fontSize: 13, color: "#374151", borderBottom: "1px solid #f3f4f6", verticalAlign: "middle",
+  };
 
   return (
     <div>
       {/* ── Stat cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
         {[
-          { icon: "❤️", value: d.totalItems, label: "Items saved", bg: "linear-gradient(135deg, #fff5f5, #fff)" },
-          { icon: "👥", value: d.totalCustomers, label: "Customers", bg: "linear-gradient(135deg, #f0f9ff, #fff)" },
-          { icon: "📦", value: d.topProducts.length, label: "Unique products", bg: "linear-gradient(135deg, #fdf4ff, #fff)" },
+          { icon: "❤️", value: d.totalItems, label: "Items saved", accent: "#ef4444" },
+          { icon: "👥", value: d.totalCustomers, label: "Customers", accent: "#3b82f6" },
+          { icon: "📦", value: d.topProducts.length, label: "Unique products", accent: "#8b5cf6" },
         ].map((s) => (
           <div key={s.label} style={{
-            background: s.bg, border: "1px solid #f3f4f6", borderRadius: 14, padding: "18px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px",
+            borderLeft: `4px solid ${s.accent}`,
           }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>{s.icon}</div>
-            <div style={{ fontSize: 30, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em" }}>{s.value}</div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#111827" }}>{s.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      {d.capped && (
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 12, padding: "10px 14px", borderRadius: 10, marginBottom: 20 }}>
-          ⚠️ Showing the first 250 customers/products.
-        </div>
-      )}
-
-      {/* ── Most wishlisted ── */}
+      {/* ── Search ── */}
       <div style={{
-        background: "#fff", border: "1px solid #f3f4f6", borderRadius: 16, padding: "20px 22px", marginBottom: 24,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 18 }}>🔥</span>
-          <span style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>Most wishlisted</span>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #e5e7eb" }}>
+          <input
+            type="text"
+            placeholder="Search by customer, product, or location"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%", padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8,
+              fontSize: 13, outline: "none", background: "#f9fafb",
+            }}
+          />
         </div>
-        {d.topProducts.map((p: any, i: number) => (
-          <div key={p.id} style={{
-            display: "flex", alignItems: "center", gap: 14, padding: "10px 0",
-            borderBottom: i < d.topProducts.length - 1 ? "1px solid #f9fafb" : "none",
-          }}>
-            <span style={{ width: 28, textAlign: "center", fontSize: i < 3 ? 18 : 13, fontWeight: 700, color: i < 3 ? undefined : "#d1d5db" }}>
-              {i < 3 ? medals[i] : i + 1}
-            </span>
-            {p.image
-              ? <img src={p.image} alt="" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", background: "#f9fafb", border: "1px solid #f3f4f6" }} />
-              : <div style={{ width: 48, height: 48, borderRadius: 10, background: "#f3f4f6" }} />}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <a href={p.url} target="_blank" rel="noreferrer" style={{
-                fontSize: 13, fontWeight: 500, color: "#1f2937", textDecoration: "none", lineHeight: 1.4,
-                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden",
-              }}>
-                {p.title}
-              </a>
-            </div>
-            <span style={{
-              background: "linear-gradient(135deg, #fef2f2, #fff5f5)", color: "#ef4444", fontWeight: 700, fontSize: 12,
-              padding: "4px 12px", borderRadius: 99, border: "1px solid #fecaca", whiteSpace: "nowrap",
-            }}>
-              {p.count} {p.count === 1 ? "save" : "saves"}
-            </span>
-          </div>
-        ))}
-      </div>
 
-      {/* ── Customer wishlists ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <span style={{ fontSize: 18 }}>👤</span>
-        <span style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>Customer wishlists</span>
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>{d.customers.length} customer{d.customers.length !== 1 ? "s" : ""}</span>
-      </div>
-
-      {d.customers.map((c: any) => (
-        <div key={c.id} style={{
-          background: "#fff", border: "1px solid #f3f4f6", borderRadius: 14, padding: "16px 20px", marginBottom: 12,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.15s",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: c.items.length ? 12 : 0 }}>
-            {/* Avatar */}
-            <div style={{
-              width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-              background: avatarColor(c.name), color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0,
-            }}>
-              {initials(c.name)}
-            </div>
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>{c.name}</div>
-              <div style={{ fontSize: 12, color: "#9ca3af", display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {c.email && <span>{c.email}</span>}
-                {c.orders > 0 && <span>· {c.orders} order{c.orders === 1 ? "" : "s"}</span>}
-                {c.location && <span>· 📍 {c.location}</span>}
-              </div>
-            </div>
-            {/* Badge */}
-            <span style={{
-              background: "#f0fdf4", color: "#16a34a", fontWeight: 700, fontSize: 12,
-              padding: "4px 12px", borderRadius: 99, border: "1px solid #bbf7d0", whiteSpace: "nowrap",
-            }}>
-              {c.count} {c.count === 1 ? "item" : "items"}
-            </span>
-          </div>
-          {/* Product chips */}
-          {c.items.length > 0 && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 52 }}>
-              {c.items.map((it: any) => (
-                <a key={it.id} href={it.url} target="_blank" rel="noreferrer" title={it.title}
-                   style={{
-                     display: "flex", alignItems: "center", gap: 7, background: "#f9fafb", border: "1px solid #f3f4f6",
-                     borderRadius: 10, padding: "5px 10px 5px 5px", textDecoration: "none", transition: "border-color 0.15s",
-                   }}>
-                  {it.image
-                    ? <img src={it.image} alt="" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} />
-                    : <div style={{ width: 30, height: 30, borderRadius: 7, background: "#e5e7eb" }} />}
-                  <span style={{ fontSize: 12, color: "#374151", fontWeight: 500, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {it.title}
-                  </span>
-                </a>
+        {/* ── Table ── */}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#fafafa" }}>
+                <th style={th}>Customer</th>
+                <th style={th}>Location</th>
+                <th style={th}>Product</th>
+                <th style={{ ...th, textAlign: "center" }}>Saves</th>
+                <th style={{ ...th, textAlign: "center" }}>Orders</th>
+                <th style={{ ...th, textAlign: "right" }}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ ...td, textAlign: "center", color: "#9ca3af", padding: "32px 12px" }}>
+                    {q ? "No results matching your search" : "No data"}
+                  </td>
+                </tr>
+              )}
+              {filtered.map((r, i) => (
+                <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                  <td style={td}>
+                    {r.isFirst ? (
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{r.customerName}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customerEmail || "—"}</div>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#d1d5db" }}>↳</span>
+                    )}
+                  </td>
+                  <td style={td}>
+                    {r.isFirst && r.location ? (
+                      <span style={{ fontSize: 12, color: "#6b7280" }}>📍 {r.location}</span>
+                    ) : r.isFirst ? (
+                      <span style={{ color: "#d1d5db" }}>—</span>
+                    ) : null}
+                  </td>
+                  <td style={td}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {r.productImage
+                        ? <img src={r.productImage} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", background: "#f3f4f6", flexShrink: 0 }} />
+                        : <div style={{ width: 32, height: 32, borderRadius: 6, background: "#f3f4f6", flexShrink: 0 }} />}
+                      <a href={r.productUrl} target="_blank" rel="noreferrer" style={{
+                        fontSize: 13, color: "#1f2937", textDecoration: "none", fontWeight: 500,
+                        maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block",
+                      }}>
+                        {r.productTitle}
+                      </a>
+                    </div>
+                  </td>
+                  <td style={{ ...td, textAlign: "center" }}>
+                    {r.isFirst && (
+                      <span style={{
+                        background: "#fef2f2", color: "#ef4444", fontWeight: 700, fontSize: 12,
+                        padding: "2px 10px", borderRadius: 99,
+                      }}>
+                        {r.itemCount}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ ...td, textAlign: "center" }}>
+                    {r.isFirst && (
+                      <span style={{ fontSize: 13, color: "#374151" }}>{r.orders}</span>
+                    )}
+                  </td>
+                  <td style={{ ...td, textAlign: "right", fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>
+                    {r.isFirst && r.addedAt ? new Date(r.addedAt).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric",
+                    }) + ", " + new Date(r.addedAt).toLocaleTimeString("en-IN", {
+                      hour: "numeric", minute: "2-digit", hour12: true,
+                    }) : ""}
+                  </td>
+                </tr>
               ))}
-            </div>
-          )}
+            </tbody>
+          </table>
         </div>
-      ))}
+
+        {/* Footer */}
+        <div style={{ padding: "10px 16px", borderTop: "1px solid #e5e7eb", fontSize: 12, color: "#9ca3af", display: "flex", justifyContent: "space-between" }}>
+          <span>{filtered.length} {filtered.length === 1 ? "entry" : "entries"}{q ? ` (filtered from ${rows.length})` : ""}</span>
+          {d.capped && <span style={{ color: "#d97706" }}>⚠️ Capped at 250</span>}
+        </div>
+      </div>
     </div>
   );
 }
