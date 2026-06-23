@@ -349,16 +349,16 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
         </div>
 
         {/* ── Table ── */}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead>
               <tr style={{ background: "#fafafa" }}>
-                <th style={th}>Customer</th>
-                <th style={th}>Location</th>
+                <th style={{ ...th, width: "22%" }}>Customer</th>
+                <th style={{ ...th, width: "15%" }}>Location</th>
                 <th style={th}>Product</th>
-                <th style={{ ...th, textAlign: "center" }}>Saves</th>
-                <th style={{ ...th, textAlign: "center" }}>Orders</th>
-                <th style={{ ...th, textAlign: "right" }}>Date</th>
+                <th style={{ ...th, textAlign: "center", width: "8%" }}>Saves</th>
+                <th style={{ ...th, textAlign: "center", width: "8%" }}>Orders</th>
+                <th style={{ ...th, textAlign: "right", width: "16%" }}>Date</th>
               </tr>
             </thead>
             <tbody>
@@ -373,9 +373,9 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
                 <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
                   <td style={td}>
                     {r.isFirst ? (
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{r.customerName}</div>
-                        <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customerEmail || "—"}</div>
+                      <div style={{ overflow: "hidden" }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerName}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerEmail || "—"}</div>
                       </div>
                     ) : (
                       <span style={{ color: "#d1d5db" }}>↳</span>
@@ -383,7 +383,7 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
                   </td>
                   <td style={td}>
                     {r.isFirst && r.location ? (
-                      <span style={{ fontSize: 12, color: "#6b7280" }}>📍 {r.location}</span>
+                      <span style={{ fontSize: 12, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>📍 {r.location}</span>
                     ) : r.isFirst ? (
                       <span style={{ color: "#d1d5db" }}>—</span>
                     ) : null}
@@ -395,7 +395,7 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
                         : <div style={{ width: 32, height: 32, borderRadius: 6, background: "#f3f4f6", flexShrink: 0 }} />}
                       <a href={r.productUrl} target="_blank" rel="noreferrer" style={{
                         fontSize: 13, color: "#1f2937", textDecoration: "none", fontWeight: 500,
-                        maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block",
                       }}>
                         {r.productTitle}
                       </a>
