@@ -1423,7 +1423,7 @@
   height: 15px;
   font-size: 9px;
 }
-.dw-mobile-nav-item .dw-mnav-icon svg path { fill: #303030; }
+.dw-mobile-nav-item .dw-mnav-icon svg path { fill: #ef4444; }
 .dw-mobile-nav-item { text-decoration: none; color: inherit; }
 
 /* ── Mobile nav: make room for 5th item (reduce side padding) ── */
@@ -1451,7 +1451,8 @@
 .dw-header-icon .dw-badge { top: -4px; right: 0; }
 
 /* ── Header heart: filled red + gentle heartbeat ── */
-.dw-header-icon .dw-hdr-heart {
+.dw-header-icon .dw-hdr-heart,
+.dw-mobile-nav-item .dw-hdr-heart {
   display: block;
   transform-origin: center;
   animation: dw-heartbeat 2.2s ease-in-out infinite;
@@ -1465,5 +1466,11 @@
 }
 .dw-header-icon:hover .dw-hdr-heart { animation-duration: 0.9s; }
 @media (prefers-reduced-motion: reduce) {
-  .dw-header-icon .dw-hdr-heart { animation: none; }
+  .dw-header-icon .dw-hdr-heart,
+  .dw-mobile-nav-item .dw-hdr-heart { animation: none; }
+}
+
+/* ── Hide desktop header heart on mobile (mobile uses the nav-bar item) ── */
+@media (max-width: 767px) {
+  .dw-header-icon { display: none !important; }
 }
