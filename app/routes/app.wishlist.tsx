@@ -105,7 +105,7 @@ export default function WishlistSettings() {
   };
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "-apple-system, system-ui, sans-serif" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24, fontFamily: "-apple-system, system-ui, sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Wishlist</h1>
         {tab === "settings" && (
