@@ -23,6 +23,7 @@ export default function App() {
         <s-link href="/app/gift">Free Gift</s-link>
         <s-link href="/app/bar">Progress Bar</s-link>
         <s-link href="/app/exit">Exit Intent</s-link>
+        <s-link href="/app/wishlist">Wishlist</s-link>
         <s-link href="/app/customers">Customers</s-link>
         <s-link href="/app/transactions">Transactions</s-link>
       </s-app-nav>

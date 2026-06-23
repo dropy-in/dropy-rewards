@@ -1045,6 +1045,7 @@
   var LS_KEY = "dropy_wishlist";
   var PROXY = "/apps/rewards/wishlist";
   var SYNC_FLAG = "dropy_wl_synced"; // session flag so we hydrate once per load
+  var CFG = { enabled: true, heart_color: "#ef4444", show_cards: true, show_pdp: true, show_header: true, show_mobile_nav: true };
 
   // ---- localStorage helpers (rich objects keyed by handle) ----
   function load() {
@@ -1271,7 +1272,7 @@
   // ---- desktop header icon (before .dropy-credit) + mobile nav item ----
   function injectHeader() {
     // DESKTOP: insert before the store-credit icon
-    if (!document.querySelector(".dw-header-icon")) {
+    if (CFG.show_header !== false && !document.querySelector(".dw-header-icon")) {
       var credit = document.querySelector(".dropy-credit");
       var cart = document.querySelector(".header-icon-cart, a[href*='/cart']");
       var ref = credit || cart;
@@ -1290,7 +1291,7 @@
     }
 
     // MOBILE: add a Wishlist item into the bottom nav, matching its markup
-    if (!document.querySelector(".dw-mobile-nav-item")) {
+    if (CFG.show_mobile_nav !== false && !document.querySelector(".dw-mobile-nav-item")) {
       var navRow = document.querySelector("#bottom-mobile-nav .flex");
       if (navRow) {
         var sample = navRow.querySelector("a[aria-label]");
@@ -1415,22 +1416,30 @@
   }
 
   // ---- init ----
-  function init() {
-    injectHeader();
-    injectPDP();
-    injectCards();
+  function start() {
+    // apply heart color via CSS var override
+    if (CFG.heart_color) {
+      var st = document.createElement("style");
+      st.textContent =
+        ".dw-heart.dw-on { color: " + CFG.heart_color + " !important; }" +
+        ".dw-header-icon .dw-hdr-heart path, .dw-mobile-nav-item .dw-hdr-heart path { fill: " + CFG.heart_color + " !important; }" +
+        ".dw-mobile-nav-item .dw-mnav-icon svg path { fill: " + CFG.heart_color + " !important; }";
+      document.head.appendChild(st);
+    }
+    if (CFG.show_header !== false) injectHeader();
+    if (CFG.show_pdp !== false) injectPDP();
+    if (CFG.show_cards !== false) injectCards();
     renderPage();
     refresh();
     hydrate(function () { refresh(); renderPage(); });
 
     // Re-scan ONLY the product grid (not whole body) — avoids scroll jank.
-    // Scope to the grid container; fall back to body only if grid not found.
     var target =
       document.getElementById("ProductGridContainer") ||
       document.querySelector('[class*="grid-layout"], .anm-reveal-container') ||
       null;
 
-    if (target) {
+    if (target && CFG.show_cards !== false) {
       var pending = null;
       var scrolling = false;
       var scrollT = null;
@@ -1457,11 +1466,30 @@
       mo.observe(target, { childList: true, subtree: true });
     }
 
-    // Header/PDP only need one extra check after late-loading theme JS — no observer.
-    setTimeout(function () { injectHeader(); injectPDP(); injectCards(); refresh(); }, 1200);
+    setTimeout(function () {
+      if (CFG.show_header !== false) injectHeader();
+      if (CFG.show_pdp !== false) injectPDP();
+      if (CFG.show_cards !== false) injectCards();
+      refresh();
+    }, 1200);
 
-    // Re-check on browser back/forward (bfcache) and page show
     window.addEventListener("pageshow", function () { refresh(); });
+  }
+
+  function init() {
+    // fetch config first; gate the whole feature on `enabled`
+    get(PROXY + "/config", function (err, cfg) {
+      if (cfg && typeof cfg === "object") {
+        CFG.enabled = cfg.enabled !== false;
+        if (cfg.heart_color) CFG.heart_color = cfg.heart_color;
+        CFG.show_cards = cfg.show_cards !== false;
+        CFG.show_pdp = cfg.show_pdp !== false;
+        CFG.show_header = cfg.show_header !== false;
+        CFG.show_mobile_nav = cfg.show_mobile_nav !== false;
+      }
+      if (CFG.enabled === false) return; // wishlist turned off in admin
+      start();
+    });
   }
 
   if (document.readyState === "loading") {
