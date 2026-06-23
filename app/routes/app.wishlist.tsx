@@ -251,104 +251,163 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
   const loading = fetcher.state === "loading";
   const d = fetcher.data;
 
-  const card: React.CSSProperties = {
-    background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, marginBottom: 20,
-  };
-
   if (loading || !d) {
-    return <div style={{ color: "#6b7280", fontSize: 14, padding: "40px 0", textAlign: "center" }}>Loading wishlist data…</div>;
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0", gap: 10 }}>
+        <span style={{ width: 20, height: 20, border: "3px solid #e5e7eb", borderTopColor: "#fb923c", borderRadius: "50%", animation: "dw-spin 0.6s linear infinite", display: "inline-block" }} />
+        <span style={{ color: "#6b7280", fontSize: 14 }}>Loading wishlist data…</span>
+        <style>{`@keyframes dw-spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
 
   if (!d.totalItems) {
     return (
-      <div style={{ ...card, textAlign: "center", padding: "48px 20px", color: "#6b7280" }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: "#374151", marginBottom: 6 }}>No wishlist data yet</div>
-        <div style={{ fontSize: 14 }}>
-          Once logged-in customers start saving products, their wishlists will appear here.
+      <div style={{ textAlign: "center", padding: "56px 24px" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>💝</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#1f2937", marginBottom: 6 }}>No wishlist data yet</div>
+        <div style={{ fontSize: 14, color: "#6b7280", maxWidth: 340, margin: "0 auto" }}>
+          Once logged-in customers start saving products, their wishlists and insights will appear here.
         </div>
       </div>
     );
   }
 
-  const stat: React.CSSProperties = {
-    flex: 1, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px",
-  };
+  const medals = ["🥇", "🥈", "🥉"];
+
+  function initials(name: string) {
+    return name.split(" ").map((w: string) => w[0] || "").slice(0, 2).join("").toUpperCase();
+  }
+
+  const colors = ["#fb923c", "#8b5cf6", "#06b6d4", "#ec4899", "#10b981", "#ef4444", "#f59e0b"];
+  function avatarColor(name: string) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+    return colors[Math.abs(h) % colors.length];
+  }
 
   return (
     <div>
-      {/* Summary stats */}
-      <div style={{ display: "flex", gap: 14, marginBottom: 22 }}>
-        <div style={stat}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#1a1a1a" }}>{d.totalItems}</div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>Items saved</div>
-        </div>
-        <div style={stat}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#1a1a1a" }}>{d.totalCustomers}</div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>Customers</div>
-        </div>
-        <div style={stat}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#1a1a1a" }}>{d.topProducts.length}</div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>Unique products</div>
-        </div>
+      {/* ── Stat cards ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
+        {[
+          { icon: "❤️", value: d.totalItems, label: "Items saved", bg: "linear-gradient(135deg, #fff5f5, #fff)" },
+          { icon: "👥", value: d.totalCustomers, label: "Customers", bg: "linear-gradient(135deg, #f0f9ff, #fff)" },
+          { icon: "📦", value: d.topProducts.length, label: "Unique products", bg: "linear-gradient(135deg, #fdf4ff, #fff)" },
+        ].map((s) => (
+          <div key={s.label} style={{
+            background: s.bg, border: "1px solid #f3f4f6", borderRadius: 14, padding: "18px 20px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>{s.icon}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em" }}>{s.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+          </div>
+        ))}
       </div>
 
       {d.capped && (
-        <div style={{ background: "#fef3c7", border: "1px solid #fde68a", color: "#92400e", fontSize: 12, padding: "8px 12px", borderRadius: 8, marginBottom: 18 }}>
-          Showing the first 250 customers/products. Export coming soon for full data.
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 12, padding: "10px 14px", borderRadius: 10, marginBottom: 20 }}>
+          ⚠️ Showing the first 250 customers/products.
         </div>
       )}
 
-      {/* Most wishlisted */}
-      <div style={card}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>🔥 Most wishlisted products</div>
+      {/* ── Most wishlisted ── */}
+      <div style={{
+        background: "#fff", border: "1px solid #f3f4f6", borderRadius: 16, padding: "20px 22px", marginBottom: 24,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <span style={{ fontSize: 18 }}>🔥</span>
+          <span style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>Most wishlisted</span>
+        </div>
         {d.topProducts.map((p: any, i: number) => (
-          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < d.topProducts.length - 1 ? "1px solid #f3f4f6" : "none" }}>
-            <span style={{ width: 22, color: "#9ca3af", fontWeight: 700, fontSize: 13 }}>{i + 1}</span>
+          <div key={p.id} style={{
+            display: "flex", alignItems: "center", gap: 14, padding: "10px 0",
+            borderBottom: i < d.topProducts.length - 1 ? "1px solid #f9fafb" : "none",
+          }}>
+            <span style={{ width: 28, textAlign: "center", fontSize: i < 3 ? 18 : 13, fontWeight: 700, color: i < 3 ? undefined : "#d1d5db" }}>
+              {i < 3 ? medals[i] : i + 1}
+            </span>
             {p.image
-              ? <img src={p.image} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover", background: "#f3f4f6" }} />
-              : <div style={{ width: 40, height: 40, borderRadius: 8, background: "#f3f4f6" }} />}
-            <a href={p.url} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 13, color: "#1f2937", textDecoration: "none", lineHeight: 1.3 }}>
-              {p.title}
-            </a>
-            <span style={{ background: "#fef2f2", color: "#ef4444", fontWeight: 700, fontSize: 12, padding: "3px 10px", borderRadius: 99 }}>
+              ? <img src={p.image} alt="" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", background: "#f9fafb", border: "1px solid #f3f4f6" }} />
+              : <div style={{ width: 48, height: 48, borderRadius: 10, background: "#f3f4f6" }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <a href={p.url} target="_blank" rel="noreferrer" style={{
+                fontSize: 13, fontWeight: 500, color: "#1f2937", textDecoration: "none", lineHeight: 1.4,
+                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden",
+              }}>
+                {p.title}
+              </a>
+            </div>
+            <span style={{
+              background: "linear-gradient(135deg, #fef2f2, #fff5f5)", color: "#ef4444", fontWeight: 700, fontSize: 12,
+              padding: "4px 12px", borderRadius: 99, border: "1px solid #fecaca", whiteSpace: "nowrap",
+            }}>
               {p.count} {p.count === 1 ? "save" : "saves"}
             </span>
           </div>
         ))}
       </div>
 
-      {/* Per-customer */}
-      <div style={card}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>👤 Customer wishlists</div>
-        {d.customers.map((c: any, ci: number) => (
-          <div key={c.id} style={{ padding: "12px 0", borderBottom: ci < d.customers.length - 1 ? "1px solid #f3f4f6" : "none" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: "#1f2937" }}>{c.name}</div>
-                <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                  {c.email || "—"}{c.orders ? ` · ${c.orders} order${c.orders === 1 ? "" : "s"}` : ""}{c.location ? ` · 📍 ${c.location}` : ""}
-                </div>
-              </div>
-              <span style={{ background: "#f3f4f6", color: "#6b7280", fontWeight: 600, fontSize: 12, padding: "3px 10px", borderRadius: 99 }}>
-                {c.count} {c.count === 1 ? "item" : "items"}
-              </span>
+      {/* ── Customer wishlists ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 18 }}>👤</span>
+        <span style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>Customer wishlists</span>
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>{d.customers.length} customer{d.customers.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {d.customers.map((c: any) => (
+        <div key={c.id} style={{
+          background: "#fff", border: "1px solid #f3f4f6", borderRadius: 14, padding: "16px 20px", marginBottom: 12,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.15s",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: c.items.length ? 12 : 0 }}>
+            {/* Avatar */}
+            <div style={{
+              width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+              background: avatarColor(c.name), color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0,
+            }}>
+              {initials(c.name)}
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {/* Info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>{c.name}</div>
+              <div style={{ fontSize: 12, color: "#9ca3af", display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {c.email && <span>{c.email}</span>}
+                {c.orders > 0 && <span>· {c.orders} order{c.orders === 1 ? "" : "s"}</span>}
+                {c.location && <span>· 📍 {c.location}</span>}
+              </div>
+            </div>
+            {/* Badge */}
+            <span style={{
+              background: "#f0fdf4", color: "#16a34a", fontWeight: 700, fontSize: 12,
+              padding: "4px 12px", borderRadius: 99, border: "1px solid #bbf7d0", whiteSpace: "nowrap",
+            }}>
+              {c.count} {c.count === 1 ? "item" : "items"}
+            </span>
+          </div>
+          {/* Product chips */}
+          {c.items.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 52 }}>
               {c.items.map((it: any) => (
                 <a key={it.id} href={it.url} target="_blank" rel="noreferrer" title={it.title}
-                   style={{ display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 8, padding: "4px 8px 4px 4px", textDecoration: "none" }}>
+                   style={{
+                     display: "flex", alignItems: "center", gap: 7, background: "#f9fafb", border: "1px solid #f3f4f6",
+                     borderRadius: 10, padding: "5px 10px 5px 5px", textDecoration: "none", transition: "border-color 0.15s",
+                   }}>
                   {it.image
-                    ? <img src={it.image} alt="" style={{ width: 26, height: 26, borderRadius: 5, objectFit: "cover" }} />
-                    : <div style={{ width: 26, height: 26, borderRadius: 5, background: "#e5e7eb" }} />}
-                  <span style={{ fontSize: 11, color: "#4b5563", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    ? <img src={it.image} alt="" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} />
+                    : <div style={{ width: 30, height: 30, borderRadius: 7, background: "#e5e7eb" }} />}
+                  <span style={{ fontSize: 12, color: "#374151", fontWeight: 500, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {it.title}
                   </span>
                 </a>
               ))}
             </div>
-          </div>
-        ))}
-      </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
