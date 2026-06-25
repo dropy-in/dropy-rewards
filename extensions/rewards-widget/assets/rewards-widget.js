@@ -1153,6 +1153,7 @@
       var gid = gidOf(handle);
       save(load().filter(function (i) { return i.handle !== handle; }));
       refresh();
+      if (gid) post(PROXY + "/track", { productId: gid, action: "remove" }, function () {});
       if (isLoggedIn() && gid) post(PROXY + "/toggle", { productId: gid, action: "remove" }, function () {});
       flash(btn, "Removed");
     } else {
@@ -1178,6 +1179,7 @@
         if (!arr.some(function (i) { return i.handle === handle; })) arr.push(item);
         save(arr);
         refresh();
+        post(PROXY + "/track", { productId: gid, action: "add" }, function () {});
         if (isLoggedIn()) post(PROXY + "/toggle", { productId: gid, action: "add" }, function () {});
         flash(btn, "Saved ♥");
       });

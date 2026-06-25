@@ -262,17 +262,21 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
     );
   }
 
-  if (!d.totalItems) {
+  if (!d.totalItems && (!d.productCounts || !d.productCounts.length)) {
     return (
       <div style={{ textAlign: "center", padding: "56px 24px" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>💝</div>
         <div style={{ fontSize: 17, fontWeight: 700, color: "#1f2937", marginBottom: 6 }}>No wishlist data yet</div>
         <div style={{ fontSize: 14, color: "#6b7280", maxWidth: 340, margin: "0 auto" }}>
-          Once logged-in customers start saving products, their wishlists will appear here.
+          Once customers start saving products, their wishlists will appear here.
         </div>
       </div>
     );
   }
+
+  const pc = d.productCounts || [];
+  const totalGuest = pc.reduce((s: number, p: any) => s + (p.guest || 0), 0);
+  const totalLogged = pc.reduce((s: number, p: any) => s + (p.logged || 0), 0);
 
   // flatten into rows: one row per customer×product
   const rows: any[] = [];
@@ -315,11 +319,12 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
   return (
     <div>
       {/* ── Stat cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
         {[
-          { icon: "❤️", value: d.totalItems, label: "Items saved", accent: "#ef4444" },
-          { icon: "👥", value: d.totalCustomers, label: "Customers", accent: "#3b82f6" },
-          { icon: "📦", value: d.topProducts.length, label: "Unique products", accent: "#8b5cf6" },
+          { icon: "❤️", value: totalGuest + totalLogged, label: "Total saves", accent: "#ef4444" },
+          { icon: "👤", value: totalLogged, label: "Logged-in", accent: "#3b82f6" },
+          { icon: "👻", value: totalGuest, label: "Guest", accent: "#8b5cf6" },
+          { icon: "📦", value: pc.length, label: "Products", accent: "#10b981" },
         ].map((s) => (
           <div key={s.label} style={{
             background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px",
@@ -330,6 +335,59 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
           </div>
         ))}
       </div>
+
+      {/* ── Product Insights ── */}
+      {pc.length > 0 && (
+        <div style={{
+          background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", marginBottom: 24,
+        }}>
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb", fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🔥</span> Product Insights
+            <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 400, color: "#9ca3af" }}>Guest + logged-in saves</span>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <thead>
+              <tr style={{ background: "#fafafa" }}>
+                <th style={{ ...th, width: "5%" }}>#</th>
+                <th style={th}>Product</th>
+                <th style={{ ...th, textAlign: "center", width: "12%" }}>👻 Guest</th>
+                <th style={{ ...th, textAlign: "center", width: "12%" }}>👤 Logged</th>
+                <th style={{ ...th, textAlign: "center", width: "12%" }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pc.map((p: any, i: number) => (
+                <tr key={p.id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                  <td style={{ ...td, textAlign: "center", fontWeight: 700, color: "#d1d5db" }}>{i + 1}</td>
+                  <td style={td}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {p.image
+                        ? <img src={p.image} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", background: "#f3f4f6", flexShrink: 0 }} />
+                        : <div style={{ width: 32, height: 32, borderRadius: 6, background: "#f3f4f6", flexShrink: 0 }} />}
+                      <a href={p.url} target="_blank" rel="noreferrer" style={{
+                        fontSize: 13, color: "#1f2937", textDecoration: "none", fontWeight: 500,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block",
+                      }}>{p.title}</a>
+                    </div>
+                  </td>
+                  <td style={{ ...td, textAlign: "center" }}>
+                    {p.guest > 0 ? <span style={{ background: "#f3e8ff", color: "#7c3aed", fontWeight: 700, fontSize: 12, padding: "2px 10px", borderRadius: 99 }}>{p.guest}</span> : <span style={{ color: "#e5e7eb" }}>—</span>}
+                  </td>
+                  <td style={{ ...td, textAlign: "center" }}>
+                    {p.logged > 0 ? <span style={{ background: "#dbeafe", color: "#2563eb", fontWeight: 700, fontSize: 12, padding: "2px 10px", borderRadius: 99 }}>{p.logged}</span> : <span style={{ color: "#e5e7eb" }}>—</span>}
+                  </td>
+                  <td style={{ ...td, textAlign: "center" }}>
+                    <span style={{ background: "#fef2f2", color: "#ef4444", fontWeight: 700, fontSize: 12, padding: "2px 10px", borderRadius: 99 }}>{p.total}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Customer Table ── */}
+      {(d.customers || []).length > 0 && (
 
       {/* ── Search ── */}
       <div style={{
@@ -435,6 +493,7 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
           {d.capped && <span style={{ color: "#d97706" }}>⚠️ Capped at 250</span>}
         </div>
       </div>
+      )}
     </div>
   );
 }

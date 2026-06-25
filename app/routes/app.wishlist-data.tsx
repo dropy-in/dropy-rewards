@@ -110,7 +110,54 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  // 4. Top products
+  // 4a. Product-level counts (includes guest saves)
+  let productCounts: any[] = [];
+  try {
+    const { data: pcRows } = await supabase
+      .from("wishlist_product_counts")
+      .select("product_id, guest_count, logged_count, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(250);
+
+    if (pcRows && pcRows.length) {
+      // Hydrate any product IDs not already in productMap
+      const missingIds = pcRows
+        .map((r: any) => r.product_id)
+        .filter((pid: string) => !productMap[pid]);
+
+      if (missingIds.length) {
+        try {
+          const res = await admin.graphql(
+            `query HydrateExtra($ids: [ID!]!) {
+              nodes(ids: $ids) { ... on Product { id title handle onlineStoreUrl featuredImage { url } } }
+            }`,
+            { variables: { ids: missingIds.slice(0, 250) } },
+          );
+          const raw = await res.json();
+          (raw?.data?.nodes || []).forEach((p: any) => {
+            if (p && p.id) {
+              productMap[p.id] = {
+                id: p.id, title: p.title || "Untitled", handle: p.handle || "",
+                url: p.onlineStoreUrl || `/products/${p.handle}`, image: p.featuredImage?.url || "",
+              };
+            }
+          });
+        } catch (e) { /* hydration failed */ }
+      }
+
+      productCounts = pcRows
+        .map((r: any) => ({
+          ...(productMap[r.product_id] || { id: r.product_id, title: r.product_id, handle: "", url: "#", image: "" }),
+          guest: r.guest_count || 0,
+          logged: r.logged_count || 0,
+          total: (r.guest_count || 0) + (r.logged_count || 0),
+        }))
+        .filter((r: any) => r.total > 0)
+        .sort((a: any, b: any) => b.total - a.total);
+    }
+  } catch (e) { /* non-critical */ }
+
+  // 4b. Top products from logged-in wishlist_items (existing)
   const topProducts = allProductIds
     .map((pid) => ({
       ...(productMap[pid] || { id: pid, title: pid, handle: "", url: "#", image: "" }),
@@ -140,6 +187,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totalItems: rows.length,
     totalCustomers: allCustomerIds.length,
     topProducts,
+    productCounts,
     customers,
     capped,
   });
