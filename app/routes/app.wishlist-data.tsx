@@ -7,17 +7,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   // 1. Pull mirror rows
-  const { data: rows, error } = await supabase
+  const { data: rawRows, error } = await supabase
     .from("wishlist_items")
     .select("customer_id, product_id, added_at")
     .order("added_at", { ascending: false })
     .limit(5000);
 
-  if (error || !rows || !rows.length) {
-    return Response.json({
-      totalItems: 0, totalCustomers: 0, topProducts: [], customers: [], capped: false,
-    });
-  }
+  const rows = (error || !rawRows) ? [] : rawRows;
 
   // 2. Group
   const byCustomer: Record<string, { product_id: string; added_at: string }[]> = {};
