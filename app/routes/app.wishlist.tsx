@@ -388,7 +388,7 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
 
       {/* ── Customer Table ── */}
       {(d.customers || []).length > 0 && (
-
+      <>
       {/* ── Search ── */}
       <div style={{
         background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden",
@@ -493,6 +493,7 @@ function WishlistDataView({ fetcher }: { fetcher: any }) {
           {d.capped && <span style={{ color: "#d97706" }}>⚠️ Capped at 250</span>}
         </div>
       </div>
+      </>
       )}
     </div>
   );
