@@ -4,7 +4,6 @@ import { supabase } from "../supabase.server";
 // POST /apps/rewards/wishlist/track
 // Anonymous-safe: tracks product-level wishlist saves for BOTH guests and logged-in.
 // Body: { productId: "gid://shopify/Product/123", action: "add" | "remove" }
-// Determines source from logged_in_customer_id presence.
 export const action = async ({ request }: { request: Request }) => {
   await authenticate.public.appProxy(request);
 
@@ -17,48 +16,33 @@ export const action = async ({ request }: { request: Request }) => {
     return Response.json({ ok: false }, { status: 400 });
   }
 
-  const col = isLoggedIn ? "logged_count" : "guest_count";
-  const delta = act === "add" ? 1 : -1;
-
   try {
-    // Try upsert with increment
-    if (act === "add") {
-      // Insert or increment
-      const { data: existing } = await supabase
-        .from("wishlist_product_counts")
-        .select("product_id, guest_count, logged_count")
-        .eq("product_id", productId)
-        .maybeSingle();
+    const { data: existing } = await supabase
+      .from("wishlist_product_counts")
+      .select("product_id, guest_count, logged_count")
+      .eq("product_id", productId)
+      .maybeSingle();
 
-      if (existing) {
-        const newVal = Math.max(0, (existing[col as keyof typeof existing] as number || 0) + delta);
-        await supabase
-          .from("wishlist_product_counts")
-          .update({ [col]: newVal, updated_at: new Date().toISOString() })
-          .eq("product_id", productId);
-      } else {
-        await supabase
-          .from("wishlist_product_counts")
-          .insert({ product_id: productId, [col]: 1 });
-      }
-    } else {
-      // Decrement (min 0)
-      const { data: existing } = await supabase
-        .from("wishlist_product_counts")
-        .select("product_id, guest_count, logged_count")
-        .eq("product_id", productId)
-        .maybeSingle();
+    const delta = act === "add" ? 1 : -1;
+    const gc = Math.max(0, ((existing as any)?.guest_count || 0) + (isLoggedIn ? 0 : delta));
+    const lc = Math.max(0, ((existing as any)?.logged_count || 0) + (isLoggedIn ? delta : 0));
 
-      if (existing) {
-        const newVal = Math.max(0, (existing[col as keyof typeof existing] as number || 0) + delta);
-        await supabase
-          .from("wishlist_product_counts")
-          .update({ [col]: newVal, updated_at: new Date().toISOString() })
-          .eq("product_id", productId);
-      }
+    if (existing) {
+      await supabase
+        .from("wishlist_product_counts")
+        .update({ guest_count: gc, logged_count: lc, updated_at: new Date().toISOString() })
+        .eq("product_id", productId);
+    } else if (act === "add") {
+      await supabase
+        .from("wishlist_product_counts")
+        .insert({
+          product_id: productId,
+          guest_count: isLoggedIn ? 0 : 1,
+          logged_count: isLoggedIn ? 1 : 0,
+        });
     }
   } catch (e) {
-    /* non-critical — never break the UX */
+    /* non-critical */
   }
 
   return Response.json({ ok: true });
