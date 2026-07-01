@@ -1,9 +1,11 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
+import { supabase } from "../supabase.server";
 
 // GET /apps/rewards/wishlist/list
 // Returns the logged-in customer's wishlist with display data, so the client can
 // hydrate localStorage (handles cross-device + "saved as guest then logged in").
+// Also auto-syncs metafield data to Supabase mirror (backfill for pre-mirror saves).
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.public.appProxy(request);
   if (!admin) return Response.json({ loggedIn: false, items: [] });
@@ -35,6 +37,50 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   if (!gids.length) return Response.json({ loggedIn: true, items: [] });
+
+  // 1b. Auto-sync: backfill Supabase mirror from metafield (non-critical, never blocks response)
+  try {
+    // Check which items are already mirrored
+    const { data: existing } = await supabase
+      .from("wishlist_items")
+      .select("product_id")
+      .eq("customer_id", customerId);
+
+    const existingSet = new Set((existing || []).map((r: any) => r.product_id));
+    const newGids = gids.filter((g) => !existingSet.has(g));
+
+    if (newGids.length) {
+      // Batch upsert new items to wishlist_items
+      await supabase
+        .from("wishlist_items")
+        .upsert(
+          newGids.map((gid) => ({ customer_id: customerId, product_id: gid })),
+          { onConflict: "customer_id,product_id", ignoreDuplicates: true },
+        );
+
+      // Update product counts for each new item
+      for (const gid of newGids) {
+        const { data: pc } = await supabase
+          .from("wishlist_product_counts")
+          .select("product_id, logged_count")
+          .eq("product_id", gid)
+          .maybeSingle();
+
+        if (pc) {
+          await supabase
+            .from("wishlist_product_counts")
+            .update({ logged_count: ((pc as any).logged_count || 0) + 1, updated_at: new Date().toISOString() })
+            .eq("product_id", gid);
+        } else {
+          await supabase
+            .from("wishlist_product_counts")
+            .insert({ product_id: gid, logged_count: 1, guest_count: 0 });
+        }
+      }
+    }
+  } catch (e) {
+    /* backfill failed — non-critical, don't block the response */
+  }
 
   // 2. Hydrate display data for those products
   let items: any[] = [];
