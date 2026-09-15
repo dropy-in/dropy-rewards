@@ -1572,8 +1572,7 @@ window.__dropyCfg = function (key) {
   }
 
   function init() {
-    // fetch config first; gate the whole feature on `enabled`
-    get(PROXY + "/config", function (err, cfg) {
+    function applyCfg(cfg) {
       if (cfg && typeof cfg === "object") {
         CFG.enabled = cfg.enabled !== false;
         if (cfg.heart_color) CFG.heart_color = cfg.heart_color;
@@ -1584,6 +1583,16 @@ window.__dropyCfg = function (key) {
       }
       if (CFG.enabled === false) return; // wishlist turned off in admin
       start();
+    }
+
+    var preWishCfg = window.__dropyCfg && window.__dropyCfg("wishlist");
+    if (preWishCfg) {
+      applyCfg(preWishCfg);
+      return;
+    }
+    // fetch config first; gate the whole feature on `enabled`
+    get(PROXY + "/config", function (err, cfg) {
+      applyCfg(cfg);
     });
   }
 
