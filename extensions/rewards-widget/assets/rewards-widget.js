@@ -310,8 +310,8 @@ window.__dropyCfg = function (key) {
     } else x.send();
   }
 
-  gxhr("GET", "/apps/rewards/gift/config", null, function (err, cfg) {
-    if (err || !cfg || !cfg.enabled) return;
+  function applyGiftCfg(cfg) {
+    if (!cfg || !cfg.enabled) return;
     var tiers = cfg.tiers;
     // Back-compat: an older server may only return { threshold, handles }. Synthesize one tier.
     if (!tiers || !tiers.length) {
@@ -322,7 +322,17 @@ window.__dropyCfg = function (key) {
     tiers = (tiers || []).filter(function (t) { return t && t.handles && t.handles.length; });
     if (!tiers.length) return;
     initGifts(tiers);
-  });
+  }
+
+  var preGiftCfg = window.__dropyCfg && window.__dropyCfg("gift");
+  if (preGiftCfg) {
+    applyGiftCfg(preGiftCfg);
+  } else {
+    gxhr("GET", "/apps/rewards/gift/config", null, function (err, cfg) {
+      if (err) return;
+      applyGiftCfg(cfg);
+    });
+  }
 
   function initGifts(tierConfigs) {
     var lastCartTotal = -1;
