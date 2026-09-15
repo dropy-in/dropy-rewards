@@ -445,7 +445,10 @@ window.__dropyCfg = function (key) {
             var card = btn.closest(".dropy-gift-card");
             card.classList.add("dropy-gift-adding");
             btn.textContent = "Adding...";
-            gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1 }), function (err) {
+            // `_dropy_gift` marks this line as the gift so it never merges with a CeraVe the
+            // customer buys, and so enforcement can target it without touching purchases.
+            // Leading underscore keeps it hidden from the customer everywhere.
+            gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1, properties: { _dropy_gift: "1" } }), function (err) {
               if (err) {
                 btn.textContent = "Retry";
                 card.classList.remove("dropy-gift-adding");
