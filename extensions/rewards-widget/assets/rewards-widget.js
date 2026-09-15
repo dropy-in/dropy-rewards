@@ -347,17 +347,26 @@ window.__dropyCfg = function (key) {
       var label = cfg.label || "free gift";
       var rupees = Math.round(threshold / 100).toLocaleString("en-IN");
 
+      // Wording follows the number of options this tier offers, so stock changes in the
+      // admin can never leave "Choose ... Pick 1" sitting above a single card. The footer
+      // no longer prints `label` verbatim — a label of "free gift" used to render
+      // "1 free free gift included with orders above ₹139".
+      var isChoice = handles.length > 1;
+      var headTxt = isChoice ? "🎁 Choose Your " : "🎁 Your ";
+      var subTxt = isChoice ? "Pick 1 free gift — on us!" : "Add it to your cart — on us!";
+      var footTxt = "Free with orders above ₹" + rupees;
+
       var host = document.createElement("div");
       host.innerHTML =
         '<div class="dropy-gift-overlay">' +
         '<div class="dropy-gift-modal">' +
         '<div class="dropy-gift-header">' +
         '<button class="dropy-gift-close">&times;</button>' +
-        "<h3>🎁 Choose Your <span>FREE Gift!</span></h3>" +
-        "<p>Pick 1 free gift — on us!</p>" +
+        "<h3>" + headTxt + "<span>FREE Gift!</span></h3>" +
+        "<p>" + subTxt + "</p>" +
         "</div>" +
         '<div class="dropy-gift-body"></div>' +
-        '<div class="dropy-gift-footer">1 free ' + label + " included with orders above ₹" + rupees +
+        '<div class="dropy-gift-footer">' + footTxt +
         "</div>" +
         "</div>" +
         "</div>";
