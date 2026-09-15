@@ -36,3 +36,4 @@ database.sqlite
 
 .react-router/
 .vercel/
+*-metafield.json
