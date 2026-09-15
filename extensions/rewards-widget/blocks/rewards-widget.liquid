@@ -12,6 +12,20 @@
   data-account-url="{{ routes.account_url }}"
 ></div>
 <div id="dropy-exit-root" data-shop="{{ shop.permanent_domain }}" style="display:none"></div>
+
+{%- liquid
+  assign dropy_gift_cfg = shop.metafields.dropy.gift_config.value
+  assign dropy_exit_cfg = shop.metafields.dropy.exit_config.value
+  assign dropy_wish_cfg = shop.metafields.dropy.wishlist_config.value
+-%}
+<script type="application/json" id="dropy-widget-config">
+{
+  "gift": {% if dropy_gift_cfg %}{{ dropy_gift_cfg | json }}{% else %}null{% endif %},
+  "exit": {% if dropy_exit_cfg %}{{ dropy_exit_cfg | json }}{% else %}null{% endif %},
+  "wishlist": {% if dropy_wish_cfg %}{{ dropy_wish_cfg | json }}{% else %}null{% endif %}
+}
+</script>
+
 {{ 'rewards-widget.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'rewards-widget.js' | asset_url }}" defer></script>
 {% schema %}

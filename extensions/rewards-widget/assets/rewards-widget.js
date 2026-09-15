@@ -1,3 +1,17 @@
+// ─── Shared config reader ───────────────────────────────────────────────
+// Reads config Shopify rendered into the page (blocks/rewards-widget.liquid).
+// Returns null when absent or malformed, so every caller falls back to its fetch.
+window.__dropyCfg = function (key) {
+  try {
+    var el = document.getElementById("dropy-widget-config");
+    if (!el) return null;
+    var all = JSON.parse(el.textContent || el.innerText || "{}");
+    return all && all[key] ? all[key] : null;
+  } catch (e) {
+    return null;
+  }
+};
+
 (function () {
   var root = document.getElementById("dropy-rewards-root");
   if (!root) return;
@@ -664,10 +678,16 @@
     if (cfg.timer && cfg.timer.enabled) initTimer();
   }
 
-  xhr("/apps/rewards/exit/config", function (err, data) {
-    if (!err && data) cfg = data;
+  var preExitCfg = window.__dropyCfg && window.__dropyCfg("exit");
+  if (preExitCfg) {
+    cfg = preExitCfg;
     onReady();
-  });
+  } else {
+    xhr("/apps/rewards/exit/config", function (err, data) {
+      if (!err && data) cfg = data;
+      onReady();
+    });
+  }
 
   xhr("/cart.js", function (err, data) {
     if (!err && data) cart = data;
