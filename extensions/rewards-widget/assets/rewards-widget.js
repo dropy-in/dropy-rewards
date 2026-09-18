@@ -457,7 +457,15 @@ window.__dropyCfg = function (key) {
             // `_dropy_gift` marks this line as the gift so it never merges with a CeraVe the
             // customer buys, and so enforcement can target it without touching purchases.
             // Leading underscore keeps it hidden from the customer everywhere.
-            gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1, properties: { _dropy_gift: "1" } }), function (err) {
+            // Ask Shopify to re-render the cart sections alongside the add, then swap them in.
+            // This is what the theme's own xCartHelper.addItems does (assets/cart.js), and it
+            // replaces a full page reload — ~218 requests and 870 KB — with one request.
+            var drawerEl = document.getElementById("CartDrawer");
+            var drawerSection = drawerEl && drawerEl.getAttribute("data-section-id");
+            var wantSections = ["cart-icon-bubble"];
+            if (drawerSection) wantSections.push(drawerSection);
+
+            gxhr("POST", "/cart/add.js", JSON.stringify({ id: parseInt(variantId), quantity: 1, properties: { _dropy_gift: "1" }, sections: wantSections }), function (err, res) {
               if (err) {
                 btn.textContent = "Retry";
                 card.classList.remove("dropy-gift-adding");
@@ -476,10 +484,30 @@ window.__dropyCfg = function (key) {
                 }
               });
               removeClaimButtons();
-              setTimeout(function () {
-                hidePopup();
-                window.location.reload();
-              }, 600);
+
+              // Swap the freshly rendered sections in. Any failure here is non-fatal — the
+              // cart is already correct server-side and the next sync will catch the UI up.
+              try {
+                if (res && res.sections) {
+                  [
+                    ["cart-icon-bubble", "#cart-icon-bubble"],
+                    [drawerSection, "#CartDrawer"],
+                    [drawerSection, ".cart__shipping-and-delivery-wrapper"]
+                  ].forEach(function (pair) {
+                    var html = pair[0] && res.sections[pair[0]];
+                    var el = document.querySelector(pair[1]);
+                    if (!html || !el) return;
+                    var fresh = new DOMParser().parseFromString(html, "text/html").querySelector(pair[1]);
+                    if (fresh) el.innerHTML = fresh.innerHTML;
+                  });
+                }
+              } catch (e) {}
+
+              // Re-runs gift, bar and coupon sync against the new DOM, and re-injects the
+              // claim button for any tier still unclaimed.
+              if (window.dropyFireCartSync) window.dropyFireCartSync();
+
+              setTimeout(hidePopup, 600);
             });
           });
         });
