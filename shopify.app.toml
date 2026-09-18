@@ -20,10 +20,6 @@ api_version = "2026-07"
   topics = [ "app/scopes_update" ]
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/orders/paid"
-  topics = [ "orders/paid" ]
-
-  [[webhooks.subscriptions]]
   uri = "/webhooks/refunds/create"
   topics = [ "refunds/create" ]
 
