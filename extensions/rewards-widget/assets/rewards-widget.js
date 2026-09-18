@@ -462,6 +462,10 @@ window.__dropyCfg = function (key) {
             // replaces a full page reload — ~218 requests and 870 KB — with one request.
             var drawerEl = document.getElementById("CartDrawer");
             var drawerSection = drawerEl && drawerEl.getAttribute("data-section-id");
+            // `open` lives on #CartDrawer (survives the swap) but the `is-visible` class lives
+            // on #CartDrawer__Wrapper inside it, so the swap wipes it and the drawer vanishes
+            // while still reporting itself open. Capture the state and restore it after.
+            var drawerWasOpen = !!(drawerEl && drawerEl.hasAttribute("open"));
             var wantSections = ["cart-icon-bubble"];
             if (drawerSection) wantSections.push(drawerSection);
 
@@ -500,6 +504,14 @@ window.__dropyCfg = function (key) {
                     var fresh = new DOMParser().parseFromString(html, "text/html").querySelector(pair[1]);
                     if (fresh) el.innerHTML = fresh.innerHTML;
                   });
+                }
+              } catch (e) {}
+
+              // Restore the drawer's visible state — the rebuilt wrapper comes back without it.
+              try {
+                if (drawerWasOpen) {
+                  var wrapEl = document.getElementById("CartDrawer__Wrapper");
+                  if (wrapEl) wrapEl.classList.add("is-visible");
                 }
               } catch (e) {}
 
