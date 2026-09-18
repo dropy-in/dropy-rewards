@@ -394,7 +394,9 @@ window.__dropyCfg = function (key) {
       function showPopup() {
         overlay.classList.add("dropy-gift-show");
         document.body.style.overflow = "hidden";
-        sessionStorage.setItem(tier.keySeen, "true");
+        // localStorage, not session — sessionStorage is per-tab, so opening a product in a
+        // new tab re-fired the popup on a cart the customer had already been asked about.
+        gset(tier.keySeen, "true");
       }
       function hidePopup() {
         overlay.classList.remove("dropy-gift-show");
@@ -576,7 +578,8 @@ window.__dropyCfg = function (key) {
         btn.addEventListener("click", function (e) {
           e.preventDefault();
           e.stopPropagation();
-          tier.showPopup();
+          // one option -> add it straight away; two or more -> open the picker
+          if (!claimDirect(tier)) tier.showPopup();
         });
         target.appendChild(btn);
       });
@@ -586,6 +589,21 @@ window.__dropyCfg = function (key) {
       var top = list[0];
       list.forEach(function (t) { if (t.threshold > top.threshold) top = t; });
       return top;
+    }
+
+    // localStorage wrappers — Safari private mode throws on write, so never let that bubble.
+    function gset(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    function gget(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function gdel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+    // A tier with one option has nothing to choose, so it gets no popup — the claim button
+    // clicks the overlay's only Add button directly, reusing the whole add path.
+    function claimDirect(tier) {
+      if (!tier.overlay) return false;
+      var btns = tier.overlay.querySelectorAll(".dropy-gift-btn");
+      if (btns.length !== 1) return false;
+      btns[0].click();
+      return true;
     }
 
     function pollCart() {
@@ -633,9 +651,13 @@ window.__dropyCfg = function (key) {
           if (!t.giftInCart && sessionStorage.getItem(t.keyAdded) === "true") {
             sessionStorage.setItem(t.keyRemoved, "true");
           }
-          // back below this tier -> re-arm the popup for the next crossing
-          if (totalWithoutGift < t.threshold) {
-            sessionStorage.removeItem(t.keySeen);
+          // The popup is a once-per-cart event. It re-arms only when the cart goes empty —
+          // a new cart is a new order and a new entitlement. The old rule re-armed on any
+          // below-threshold cart, which at a 139 threshold meant almost every browsing page.
+          if (!items.length) {
+            gdel(t.keySeen);
+            sessionStorage.removeItem(t.keyAdded);
+            sessionStorage.removeItem(t.keyRemoved);
           }
 
           // ENFORCE threshold + single-qty, mirroring what a Bxgy does natively.
@@ -664,7 +686,9 @@ window.__dropyCfg = function (key) {
 
           // auto-popup at most one tier (the highest unclaimed & unseen) — never stack overlays.
           var toShow = eligible.filter(function (t) {
-            return sessionStorage.getItem(t.keySeen) !== "true" && sessionStorage.getItem(t.keyRemoved) !== "true";
+            // single-option tiers never auto-popup — the claim button adds them directly
+            if (t.handles.length < 2) return false;
+            return gget(t.keySeen) !== "true" && sessionStorage.getItem(t.keyRemoved) !== "true";
           });
           if (toShow.length && !anyPopupOpen()) {
             highestOf(toShow).showPopup();
