@@ -579,6 +579,14 @@ window.__dropyCfg = function (key) {
     allReady = true;
     setTimeout(pollCart, 300);
 
+    // True when a line is any tier's gift: tagged by us, or a zero-priced legacy gift.
+    function isAnyGift(item) {
+      for (var i = 0; i < tiers.length; i++) {
+        if (isTierGift(item, tiers[i])) return true;
+      }
+      return false;
+    }
+
     function allGiftHandles() {
       var hs = [];
       tiers.forEach(function (t) {
@@ -656,14 +664,16 @@ window.__dropyCfg = function (key) {
         try { c = JSON.parse(x.responseText); } catch (e) { return; }
         var total = c.total_price || 0;
         var items = c.items || [];
-        var allHandles = allGiftHandles();
 
         // totalWithoutGift subtracts EVERY tier's gift variants, not just one tier's.
         var totalWithoutGift = total;
         items.forEach(function (item) {
-          // Only subtract lines that are actually free. A purchased CeraVe is real spend and
-          // must count toward the threshold.
-          if (allHandles.indexOf(item.handle) !== -1 && item.final_line_price === 0) {
+          // Subtract lines WE added, whatever they currently cost. Keying on price alone was
+          // wrong: when the last non-gift item was removed the BxGy stopped applying, the gift
+          // jumped to full price, stopped being subtracted, and so looked like real spend --
+          // enforcement then left a charged "gift" sitting in the cart. A purchased CeraVe is
+          // untagged and non-zero, so it still counts toward the threshold as it should.
+          if (isAnyGift(item)) {
             totalWithoutGift -= item.final_line_price;
           }
         });
