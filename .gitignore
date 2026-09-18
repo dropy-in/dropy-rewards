@@ -37,3 +37,4 @@ database.sqlite
 .react-router/
 .vercel/
 *-metafield.json
+backfill-store-credit.log
