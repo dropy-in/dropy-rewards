@@ -591,6 +591,16 @@ window.__dropyCfg = function (key) {
       return top;
     }
 
+    // A cart line is this tier's GIFT only if we tagged it on add, or — for carts created
+    // before the tag existed — it's one of the tier's variants sitting at zero. Matching on
+    // variant id alone was wrong: the customer can buy the same CeraVe they were gifted, and
+    // the old check removed or clamped that purchased line.
+    function isTierGift(item, t) {
+      if (t.variantIds.indexOf(item.variant_id) === -1) return false;
+      if (item.properties && item.properties._dropy_gift === "1") return true;
+      return item.final_line_price === 0;
+    }
+
     // localStorage wrappers — Safari private mode throws on write, so never let that bubble.
     function gset(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function gget(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -621,14 +631,18 @@ window.__dropyCfg = function (key) {
         // totalWithoutGift subtracts EVERY tier's gift variants, not just one tier's.
         var totalWithoutGift = total;
         items.forEach(function (item) {
-          if (allIds.indexOf(item.variant_id) !== -1) totalWithoutGift -= item.final_line_price;
+          // Only subtract lines that are actually free. A purchased CeraVe is real spend and
+          // must count toward the threshold.
+          if (allIds.indexOf(item.variant_id) !== -1 && item.final_line_price === 0) {
+            totalWithoutGift -= item.final_line_price;
+          }
         });
 
         // each tier's "gift in cart" check uses that tier's own variant ids
         tiers.forEach(function (t) {
           t.giftInCart = false;
           for (var i = 0; i < items.length; i++) {
-            if (t.variantIds.indexOf(items[i].variant_id) !== -1) { t.giftInCart = true; break; }
+            if (isTierGift(items[i], t)) { t.giftInCart = true; break; }
           }
         });
 
@@ -638,9 +652,13 @@ window.__dropyCfg = function (key) {
 
         tiers.forEach(function (t) {
           // locate this tier's gift line in the live cart, if present
+          // Prefer the line we tagged; fall back to a zero-priced legacy gift. Never a purchase.
           var giftLine = null;
           for (var gi = 0; gi < items.length; gi++) {
-            if (t.variantIds.indexOf(items[gi].variant_id) !== -1) { giftLine = items[gi]; break; }
+            var it = items[gi];
+            if (t.variantIds.indexOf(it.variant_id) === -1) continue;
+            if (it.properties && it.properties._dropy_gift === "1") { giftLine = it; break; }
+            if (it.final_line_price === 0 && !giftLine) giftLine = it;
           }
 
           // crossing this tier's threshold upward re-arms a prior removal
