@@ -392,6 +392,8 @@ window.__dropyCfg = function (key) {
       };
 
       function showPopup() {
+        // Build the picker on first use — see tier.ensureReady.
+        tier.ensureReady(function () {
         // The overlay is built once and reused, so the "Added ✓" state from a previous claim
         // persisted — the popup reopened showing a gift as claimed and the other options
         // greyed out, leaving the customer unable to pick a different one.
@@ -410,6 +412,7 @@ window.__dropyCfg = function (key) {
         // localStorage, not session — sessionStorage is per-tab, so opening a product in a
         // new tab re-fired the popup on a cart the customer had already been asked about.
         gset(tier.keySeen, "true");
+        });
       }
       function hidePopup() {
         overlay.classList.remove("dropy-gift-show");
@@ -546,31 +549,42 @@ window.__dropyCfg = function (key) {
         });
       }
 
-      loadProducts(function (products) {
-        renderProducts(products);
-        tier.ready = true;
-        onTierReady();
-      });
+      // Products are fetched and the picker rendered only when a tier is first needed —
+      // the popup opening or the claim button being tapped. Previously every page load
+      // fetched one /products/<handle>.js per gift handle and built both overlay trees,
+      // to decide something that only matters when the cart crosses a threshold.
+      var loading = false, loadQueue = [];
+      tier.ensureReady = function (cb) {
+        if (tier.ready) { cb(); return; }
+        loadQueue.push(cb);
+        if (loading) return;
+        loading = true;
+        loadProducts(function (products) {
+          renderProducts(products);
+          tier.ready = true;
+          loading = false;
+          var q = loadQueue;
+          loadQueue = [];
+          q.forEach(function (fn) { fn(); });
+        });
+      };
 
       return tier;
     }
 
-    function onTierReady() {
-      readyCount++;
-      if (readyCount === tierConfigs.length) {
-        allReady = true;
-        setTimeout(pollCart, 300);
-      }
-    }
-
     var tiers = tierConfigs.map(function (cfg) { return makeTier(cfg); });
 
-    function allGiftVariantIds() {
-      var ids = [];
+    // Cart state is derived from handles, which config already gives us, so polling starts
+    // immediately instead of waiting on product fetches that may never be needed.
+    allReady = true;
+    setTimeout(pollCart, 300);
+
+    function allGiftHandles() {
+      var hs = [];
       tiers.forEach(function (t) {
-        for (var i = 0; i < t.variantIds.length; i++) ids.push(t.variantIds[i]);
+        for (var i = 0; i < t.handles.length; i++) hs.push(t.handles[i]);
       });
-      return ids;
+      return hs;
     }
 
     function anyPopupOpen() {
@@ -609,7 +623,8 @@ window.__dropyCfg = function (key) {
     // variant id alone was wrong: the customer can buy the same CeraVe they were gifted, and
     // the old check removed or clamped that purchased line.
     function isTierGift(item, t) {
-      if (t.variantIds.indexOf(item.variant_id) === -1) return false;
+      // Handles come from config; variant ids only existed after the fetch we defer.
+      if (t.handles.indexOf(item.handle) === -1) return false;
       if (item.properties && item.properties._dropy_gift === "1") return true;
       return item.final_line_price === 0;
     }
@@ -622,10 +637,12 @@ window.__dropyCfg = function (key) {
     // A tier with one option has nothing to choose, so it gets no popup — the claim button
     // clicks the overlay's only Add button directly, reusing the whole add path.
     function claimDirect(tier) {
-      if (!tier.overlay) return false;
-      var btns = tier.overlay.querySelectorAll(".dropy-gift-btn");
-      if (btns.length !== 1) return false;
-      btns[0].click();
+      // Decided from config, not from rendered buttons — the picker may not be built yet.
+      if (!tier.overlay || tier.handles.length !== 1) return false;
+      tier.ensureReady(function () {
+        var btns = tier.overlay.querySelectorAll(".dropy-gift-btn");
+        if (btns.length === 1) btns[0].click();
+      });
       return true;
     }
 
@@ -639,14 +656,14 @@ window.__dropyCfg = function (key) {
         try { c = JSON.parse(x.responseText); } catch (e) { return; }
         var total = c.total_price || 0;
         var items = c.items || [];
-        var allIds = allGiftVariantIds();
+        var allHandles = allGiftHandles();
 
         // totalWithoutGift subtracts EVERY tier's gift variants, not just one tier's.
         var totalWithoutGift = total;
         items.forEach(function (item) {
           // Only subtract lines that are actually free. A purchased CeraVe is real spend and
           // must count toward the threshold.
-          if (allIds.indexOf(item.variant_id) !== -1 && item.final_line_price === 0) {
+          if (allHandles.indexOf(item.handle) !== -1 && item.final_line_price === 0) {
             totalWithoutGift -= item.final_line_price;
           }
         });
@@ -669,7 +686,7 @@ window.__dropyCfg = function (key) {
           var giftLine = null;
           for (var gi = 0; gi < items.length; gi++) {
             var it = items[gi];
-            if (t.variantIds.indexOf(it.variant_id) === -1) continue;
+            if (t.handles.indexOf(it.handle) === -1) continue;
             if (it.properties && it.properties._dropy_gift === "1") { giftLine = it; break; }
             if (it.final_line_price === 0 && !giftLine) giftLine = it;
           }
