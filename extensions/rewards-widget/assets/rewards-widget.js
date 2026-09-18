@@ -630,6 +630,42 @@ window.__dropyCfg = function (key) {
     // before the tag existed — it's one of the tier's variants sitting at zero. Matching on
     // variant id alone was wrong: the customer can buy the same CeraVe they were gifted, and
     // the old check removed or clamped that purchased line.
+    // Enforcement corrects the cart server-side, but a bare /cart/change.js leaves the drawer
+    // showing the line it just removed — a phantom free gift that vanishes at checkout. Ask
+    // Shopify to re-render the cart sections with the change and swap them in, exactly as the
+    // add path does.
+    function giftCartChange(body) {
+      var drawerEl = document.getElementById("CartDrawer");
+      var drawerSection = drawerEl && drawerEl.getAttribute("data-section-id");
+      var drawerWasOpen = !!(drawerEl && drawerEl.hasAttribute("open"));
+      var wantSections = ["cart-icon-bubble"];
+      if (drawerSection) wantSections.push(drawerSection);
+      body.sections = wantSections;
+
+      gxhr("POST", "/cart/change.js", JSON.stringify(body), function (err, res) {
+        if (err) return;
+        try {
+          if (res && res.sections) {
+            [
+              ["cart-icon-bubble", "#cart-icon-bubble"],
+              [drawerSection, "#CartDrawer"],
+              [drawerSection, ".cart__shipping-and-delivery-wrapper"]
+            ].forEach(function (pair) {
+              var html = pair[0] && res.sections[pair[0]];
+              var el = document.querySelector(pair[1]);
+              if (!html || !el) return;
+              var fresh = new DOMParser().parseFromString(html, "text/html").querySelector(pair[1]);
+              if (fresh) el.innerHTML = fresh.innerHTML;
+            });
+          }
+          if (drawerWasOpen) {
+            var wrapEl = document.getElementById("CartDrawer__Wrapper");
+            if (wrapEl) wrapEl.classList.add("is-visible");
+          }
+        } catch (e) {}
+      });
+    }
+
     function isTierGift(item, t) {
       // Handles come from config; variant ids only existed after the fetch we defer.
       if (t.handles.indexOf(item.handle) === -1) return false;
@@ -725,10 +761,10 @@ window.__dropyCfg = function (key) {
             if (totalWithoutGift < t.threshold) {
               t._lastFix = Date.now();
               sessionStorage.setItem(t.keyRemoved, "true");
-              gxhr("POST", "/cart/change.js", JSON.stringify({ id: giftLine.key, quantity: 0 }), function () {});
+              giftCartChange({ id: giftLine.key, quantity: 0 });
             } else if (totalWithoutGift >= t.threshold && giftLine.quantity > 1) {
               t._lastFix = Date.now();
-              gxhr("POST", "/cart/change.js", JSON.stringify({ id: giftLine.key, quantity: 1 }), function () {});
+              giftCartChange({ id: giftLine.key, quantity: 1 });
             }
           }
         });
