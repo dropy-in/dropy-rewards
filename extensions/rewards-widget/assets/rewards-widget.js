@@ -392,6 +392,19 @@ window.__dropyCfg = function (key) {
       };
 
       function showPopup() {
+        // The overlay is built once and reused, so the "Added ✓" state from a previous claim
+        // persisted — the popup reopened showing a gift as claimed and the other options
+        // greyed out, leaving the customer unable to pick a different one.
+        overlay.querySelectorAll(".dropy-gift-card").forEach(function (c) {
+          c.classList.remove("dropy-gift-added", "dropy-gift-adding");
+        });
+        overlay.querySelectorAll(".dropy-gift-btn").forEach(function (b) {
+          b.textContent = "Add";
+          b.classList.remove("dropy-gift-btn-done");
+          b.disabled = false;
+          b.style.opacity = "";
+        });
+
         overlay.classList.add("dropy-gift-show");
         document.body.style.overflow = "hidden";
         // localStorage, not session — sessionStorage is per-tab, so opening a product in a
