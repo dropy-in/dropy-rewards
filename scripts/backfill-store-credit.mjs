@@ -35,6 +35,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const API_VERSION = "2026-07";
 const CASHBACK_PERCENT = 3;
 const CURRENCY = "INR";
+const CREDITED_TAG = "cashback-done";   // written by the Shopify Flow "3% Cashback — Store Credit"
 const LOG = join(ROOT, "backfill-store-credit.log");
 
 // ── env ──────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ async function* paidOrders(since) {
          orders(first:100, after:$cursor, query:$q, sortKey:CREATED_AT) {
            pageInfo { hasNextPage endCursor }
            nodes {
-             id name createdAt displayFinancialStatus test
+             id name createdAt displayFinancialStatus test tags
              customer { id displayName }
              currentSubtotalPriceSet { shopMoney { amount currencyCode } }
              subtotalPriceSet { shopMoney { amount } }
@@ -189,7 +190,7 @@ console.log(`\n  Loading every already-credited order id from loyalty_ledger...`
 const already = await existingOrderIds();
 console.log(`  ${already.size} order(s) have an earn_order row -- these are skipped.\n`);
 
-let seen = 0, skipCredited = 0, skipGuest = 0, skipZero = 0, skipTest = 0, done = 0, failed = 0, total = 0;
+let seen = 0, skipCredited = 0, skipTagged = 0, skipGuest = 0, skipZero = 0, skipTest = 0, done = 0, failed = 0, total = 0;
 const rows = [];
 
 for await (const o of paidOrders(since)) {
@@ -197,6 +198,10 @@ for await (const o of paidOrders(since)) {
   const numericId = o.id.split("/").pop();
 
   if (o.test) { skipTest++; continue; }
+  // Shopify Flow credits store credit but writes NOTHING to loyalty_ledger, so the ledger alone
+  // is not a complete record any more. The Flow tags every order it credits with `cashback-done`;
+  // honouring that tag is what stops this script paying the same order a second time.
+  if (o.tags && o.tags.indexOf(CREDITED_TAG) !== -1) { skipTagged++; continue; }
   if (already.has(numericId)) { skipCredited++; continue; }
   if (!o.customer?.id) { skipGuest++; continue; }
 
@@ -212,6 +217,15 @@ for await (const o of paidOrders(since)) {
 
   try {
     await creditCustomer(o.customer.id, credit);
+    // Tag it as well, so the Flow's own guard and any future run agree with us.
+    try {
+      await shopify(
+        `mutation tag($id: ID!, $tags: [String!]!) {
+           tagsAdd(id: $id, tags: $tags) { userErrors { message } }
+         }`,
+        { id: o.id, tags: [CREDITED_TAG] }
+      );
+    } catch (e) { /* tagging is belt-and-braces; the ledger row below is the real guard */ }
     const status = await writeLedgerRow({
       customer_id: String(o.customer.id.split("/").pop()),
       type: "earn_order",
@@ -242,6 +256,7 @@ if (dryRun) {
 
 console.log(`\n  Orders scanned        : ${seen}`);
 console.log(`  Skipped, already done : ${skipCredited}`);
+console.log(`  Skipped, Flow-tagged  : ${skipTagged}`);
 console.log(`  Skipped, no customer  : ${skipGuest}`);
 console.log(`  Skipped, zero credit  : ${skipZero}`);
 console.log(`  Skipped, test order   : ${skipTest}`);
