@@ -71,11 +71,39 @@ window.__dropyCfg = function (key) {
     el.style.setProperty("--dr-off-m", offM + "px");
   });
 
+  // ─── Release flag + store credit, read from the page ──────────────────
+  // blocks/rewards-widget.liquid renders shop.metafields.dropy.credit_panel_enabled
+  // and customer.store_credit_account.balance into #dropy-widget-config as "credit".
+  // enabled=false (the default, and what a missing metafield produces) keeps the
+  // LEGACY panel below running exactly as before. No second deploy to flip it.
+  function creditState() {
+    var c = window.__dropyCfg ? window.__dropyCfg("credit") : null;
+    if (!c || typeof c !== "object") {
+      // No credit block on the page (stale app embed / malformed JSON) -> legacy.
+      return { enabled: false, loggedIn: d.loggedIn === "1", hasBalance: false, subunit: 0 };
+    }
+    // subunit arrives as a STRING. "" means the balance was nil in Liquid, which is
+    // NOT the same as zero: customer.store_credit_account returns the account in the
+    // currency of the customer's current context, so someone holding ₹77.07 who browses
+    // a non-INR market gets nil. Never render "₹0.00" for that — we do not know.
+    var raw = c.subunit == null ? "" : String(c.subunit).trim();
+    var hasBalance = raw !== "" && isFinite(Number(raw));
+    return {
+      enabled: c.enabled === true,
+      loggedIn: !!c.loggedIn,
+      hasBalance: hasBalance,
+      subunit: hasBalance ? Number(raw) : 0
+    };
+  }
+  var CREDIT = creditState();
+
   var open = false;
   function toggle(v) {
     open = v;
     panel.classList.toggle("dr-open", open);
-    if (open && !panel.dataset.loaded) load();
+    if (!open) return;
+    if (CREDIT.enabled) renderCredit();
+    else if (!panel.dataset.loaded) load();
   }
   door.addEventListener("click", function () { toggle(!open); });
   panel.querySelector(".dr-x").addEventListener("click", function () { toggle(false); });
@@ -181,7 +209,7 @@ window.__dropyCfg = function (key) {
       '<div class="dr-track"><div class="dr-fill" style="width:' + pct + '%"></div></div>';
   }
 
-  function render(res, flash) {
+  function renderLegacy(res, flash) {
     var body = panel.querySelector(".dr-body");
     // — Store credit badge in header —
     var head = panel.querySelector(".dr-head");
@@ -288,9 +316,71 @@ window.__dropyCfg = function (key) {
         return;
       }
       panel.dataset.loaded = "1";
-      render(res, flash || "");
+      renderLegacy(res, flash || "");
     });
   }
+  // ─── Store credit panel (flag ON) ─────────────────────────────────────
+  // Zero network calls. Deliberately silent on redemption: store credit is spent at
+  // Shopify's checkout, which Indian customers never reach while Fastrr is the
+  // checkout. Do not add an "applied at checkout" line until that is confirmed.
+
+  function fmtINR(subunit) {
+    var major = (Number(subunit) || 0) / 100;
+    return "₹" + major.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function renderCredit() {
+    var body = panel.querySelector(".dr-body");
+    var head = panel.querySelector(".dr-head");
+
+    var creditEl = head.querySelector(".dr-credit");
+    if (CREDIT.loggedIn && CREDIT.hasBalance && CREDIT.subunit > 0) {
+      if (!creditEl) {
+        creditEl = document.createElement("div");
+        creditEl.className = "dr-credit";
+        head.appendChild(creditEl);
+      }
+      creditEl.textContent = "💳 Store Credit: " + fmtINR(CREDIT.subunit);
+    } else if (creditEl) {
+      creditEl.remove();
+    }
+
+    var h = "";
+
+    if (!CREDIT.loggedIn) {
+      h +=
+        '<div class="dr-card"><b>Sign in to see your store credit</b><br>' +
+        '<span class="dr-sub">You earn 3% back in store credit on every order.</span><br>' +
+        '<a class="dr-btn" style="margin-top:10px" href="' +
+        esc(d.accountUrl || "/account") + '">Sign in / Join</a></div>';
+    } else if (!CREDIT.hasBalance) {
+      // Balance unknown, NOT zero — see creditState(). Say nothing about the amount.
+      h +=
+        '<div class="dr-card"><b>Store credit</b><br>' +
+        '<span class="dr-sub">You earn 3% back in store credit on every order.</span><br>' +
+        '<a class="dr-btn" style="margin-top:10px" href="' +
+        esc(d.accountUrl || "/account") + '">View account</a></div>';
+    } else {
+      h +=
+        '<div class="dr-card"><div class="dr-points"><div>' +
+        '<div class="dr-big">' + esc(fmtINR(CREDIT.subunit)) + "</div>" +
+        '<div class="dr-sub">Store credit available</div>' +
+        "</div></div></div>";
+      h +=
+        '<div class="dr-card"><div class="dr-title">How it works</div><ul class="dr-list">' +
+        "<li>🛒 Earn 3% back in store credit on every order</li>" +
+        "<li>💳 Added to your account once the order is paid</li>" +
+        "<li>♾️ Your credit never expires</li>" +
+        "</ul></div>";
+    }
+
+    body.innerHTML = h;
+  }
+
+  if (CREDIT.enabled) renderCredit();
 })();
 
 /* ───────── Dropy Free Gift Popup — multi-tier cumulative (config-driven) ───────── */
