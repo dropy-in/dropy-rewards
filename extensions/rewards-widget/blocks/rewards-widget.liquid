@@ -17,11 +17,25 @@
   assign dropy_gift_cfg = shop.metafields.dropy.gift_config.value
   assign dropy_exit_cfg = shop.metafields.dropy.exit_config.value
   assign dropy_wish_cfg = shop.metafields.dropy.wishlist_config.value
+  assign dropy_credit_fmt = ""
+  if customer.store_credit_account.balance
+    assign dropy_credit_fmt = customer.store_credit_account.balance | money_without_trailing_zeros
+  endif
 -%}
 {%- comment -%}
   `credit.enabled` is the release flag: shop metafield dropy.credit_panel_enabled
   (boolean). Absent metafield -> nil -> false -> the widget keeps the LEGACY rewards
   panel. Set it true to flip the store-credit panel on with no deploy.
+
+  `credit.checkoutEnabled` is a SECOND, independent flag:
+  dropy.credit_checkout_enabled. It governs only the "use it at checkout" line. The
+  panel can be live while redemption is still impossible — which is the case until
+  Fastrr can apply store credit at their checkout. Do not merge the two flags.
+
+  `credit.formatted` is the balance through money_without_trailing_zeros — the SAME
+  filter snippets/dropy-store-credit.liquid uses for the header amount, so the panel
+  and the header can never print two different styles of the same number. Assigned via
+  a guarded variable so nil yields "" and this document always stays valid JSON.
 
   `credit.subunit` is customer.store_credit_account.balance — a money object whose RAW
   output is the balance in the currency subunit (paise for INR), NOT rupees. It is emitted
@@ -40,8 +54,10 @@
   "wishlist": {% if dropy_wish_cfg %}{{ dropy_wish_cfg | json }}{% else %}null{% endif %},
   "credit": {
     "enabled": {% if shop.metafields.dropy.credit_panel_enabled.value %}true{% else %}false{% endif %},
+    "checkoutEnabled": {% if shop.metafields.dropy.credit_checkout_enabled.value %}true{% else %}false{% endif %},
     "loggedIn": {% if customer %}true{% else %}false{% endif %},
-    "subunit": "{{ customer.store_credit_account.balance }}"
+    "subunit": "{{ customer.store_credit_account.balance }}",
+    "formatted": {{ dropy_credit_fmt | json }}
   }
 }
 </script>

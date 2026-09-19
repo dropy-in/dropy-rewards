@@ -80,7 +80,8 @@ window.__dropyCfg = function (key) {
     var c = window.__dropyCfg ? window.__dropyCfg("credit") : null;
     if (!c || typeof c !== "object") {
       // No credit block on the page (stale app embed / malformed JSON) -> legacy.
-      return { enabled: false, loggedIn: d.loggedIn === "1", hasBalance: false, subunit: 0 };
+      return { enabled: false, checkoutEnabled: false, loggedIn: d.loggedIn === "1",
+               hasBalance: false, subunit: 0, formatted: "" };
     }
     // subunit arrives as a STRING. "" means the balance was nil in Liquid, which is
     // NOT the same as zero: customer.store_credit_account returns the account in the
@@ -90,9 +91,12 @@ window.__dropyCfg = function (key) {
     var hasBalance = raw !== "" && isFinite(Number(raw));
     return {
       enabled: c.enabled === true,
+      // Separate flag: the panel can be live while redemption is still not possible.
+      checkoutEnabled: c.checkoutEnabled === true,
       loggedIn: !!c.loggedIn,
       hasBalance: hasBalance,
-      subunit: hasBalance ? Number(raw) : 0
+      subunit: hasBalance ? Number(raw) : 0,
+      formatted: typeof c.formatted === "string" ? c.formatted : ""
     };
   }
   var CREDIT = creditState();
@@ -332,6 +336,15 @@ window.__dropyCfg = function (key) {
     });
   }
 
+  // snippets/dropy-store-credit.liquid renders the header amount with
+  // money_without_trailing_zeros ("Rs. 320"). Use the string Liquid already formatted
+  // with that same filter so the two never disagree. fmtINR is the fallback only.
+  function money(st) {
+    var f = st.formatted;
+    if (f && f.indexOf("<") === -1) return f;
+    return fmtINR(st.subunit);
+  }
+
   function renderCredit() {
     var body = panel.querySelector(".dr-body");
     var head = panel.querySelector(".dr-head");
@@ -343,7 +356,7 @@ window.__dropyCfg = function (key) {
         creditEl.className = "dr-credit";
         head.appendChild(creditEl);
       }
-      creditEl.textContent = "💳 Store Credit: " + fmtINR(CREDIT.subunit);
+      creditEl.textContent = "💳 Store Credit: " + money(CREDIT);
     } else if (creditEl) {
       creditEl.remove();
     }
@@ -366,13 +379,16 @@ window.__dropyCfg = function (key) {
     } else {
       h +=
         '<div class="dr-card"><div class="dr-points"><div>' +
-        '<div class="dr-big">' + esc(fmtINR(CREDIT.subunit)) + "</div>" +
+        '<div class="dr-big">' + esc(money(CREDIT)) + "</div>" +
         '<div class="dr-sub">Store credit available</div>' +
         "</div></div></div>";
       h +=
         '<div class="dr-card"><div class="dr-title">How it works</div><ul class="dr-list">' +
         "<li>🛒 Earn 3% back in store credit on every order</li>" +
         "<li>💳 Added to your account once the order is paid</li>" +
+        // Only once Fastrr can actually apply store credit at their checkout.
+        // Wording is mechanism-neutral: true whether it auto-applies or is selected.
+        (CREDIT.checkoutEnabled ? "<li>🛍️ Use it at checkout on your next order</li>" : "") +
         "<li>♾️ Your credit never expires</li>" +
         "</ul></div>";
     }
